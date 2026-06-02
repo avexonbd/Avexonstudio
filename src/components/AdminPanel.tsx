@@ -626,33 +626,32 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
     try {
       const startTime = Date.now();
       
-      let url = "/api/orders";
-      if (typeof window !== "undefined") {
-        const origin = window.location.origin;
-        if (origin && origin !== "null" && origin.startsWith("http")) {
-          url = origin + "/api/orders";
-        } else {
-          const href = window.location.href;
-          if (href && href.startsWith("http")) {
-            const match = href.match(/^(https?:\/\/[^\/]+)/);
-            if (match) {
-              url = match[1] + "/api/orders";
-            }
-          }
-        }
-      }
-
-      const res = await fetch(url);
+      const res = await fetch("/api/orders");
       const duration = Date.now() - startTime;
       
       const json = await res.json();
       if (json.success && json.data) {
         const list: Order[] = json.data;
-        setAllOrders(list);
-        safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(list));
+        const stored = safeLocalStorage.getItem("avexon_user_orders");
+        let merged = list;
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored);
+            if (Array.isArray(parsed)) {
+              const serverIds = new Set(list.map(o => o.id));
+              const localOnly = parsed.filter(o => o && o.id && !serverIds.has(o.id));
+              merged = [...list, ...localOnly];
+            }
+          } catch (_) {}
+        }
+        setAllOrders(merged);
+        safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(merged));
+        
+        // Dispatch storage event to alert other listening components
+        window.dispatchEvent(new Event("storage"));
         
         let statusText = `সার্ভার কানেকশন ওকে (রেসপন্স টাইম: ${duration}ms)। `;
-        statusText += `স্থানীয় ডাটাবেজে মোট ${list.length}টি লাইভ অর্ডার সফলভাবে সিঙ্ক হয়েছে। `;
+        statusText += `স্থানীয় ডাটাবেজে মোট ${merged.length}টি লাইভ অর্ডার সফলভাবে সিঙ্ক হয়েছে। `;
 
         if (isSupabaseConfigured && supabase) {
           statusText += " ক্লাউড সুপাবেস কানেকশন সচল এবং রিয়েল-টাইম চ্যানেল সিঙ্ক কোয়ালিটি ১০০%! 🟢";
@@ -852,8 +851,21 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
           const res = await fetch("/api/orders");
           const json = await res.json();
           if (json.success && json.data) {
-            setAllOrders(json.data);
-            safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(json.data));
+            const serverOrders = json.data;
+            const stored = safeLocalStorage.getItem("avexon_user_orders");
+            let merged = serverOrders;
+            if (stored) {
+              try {
+                const parsed = JSON.parse(stored);
+                if (Array.isArray(parsed)) {
+                  const serverIds = new Set(serverOrders.map((o: any) => o.id));
+                  const localOnly = parsed.filter((o: any) => o && o.id && !serverIds.has(o.id));
+                  merged = [...serverOrders, ...localOnly];
+                }
+              } catch (_) {}
+            }
+            setAllOrders(merged);
+            safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(merged));
           } else {
             const stored = safeLocalStorage.getItem("avexon_user_orders");
             if (stored) setAllOrders(JSON.parse(stored));
@@ -987,7 +999,19 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
         const json = await res.json();
         if (json.success && json.data) {
           const ordersList: Order[] = json.data;
-          const activeOrders = ordersList.filter(o => o.status !== "Done");
+          const stored = safeLocalStorage.getItem("avexon_user_orders");
+          let merged = ordersList;
+          if (stored) {
+            try {
+              const parsed = JSON.parse(stored);
+              if (Array.isArray(parsed)) {
+                const serverIds = new Set(ordersList.map(o => o.id));
+                const localOnly = parsed.filter(o => o && o.id && !serverIds.has(o.id));
+                merged = [...ordersList, ...localOnly];
+              }
+            } catch (_) {}
+          }
+          const activeOrders = merged.filter(o => o.status !== "Done");
           
           // Update native PWA launcher app icon badge
           if ("setAppBadge" in navigator) {
@@ -1000,15 +1024,15 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
           }
           
           // Trigger Notification & audio chime if a new order arrives
-          if (lastOrderCount !== -1 && ordersList.length > lastOrderCount) {
-            const newlyCreated = ordersList[0]; // Newest order is unshifted at the front
+          if (lastOrderCount !== -1 && merged.length > lastOrderCount) {
+            const newlyCreated = merged[0]; // Newest order is unshifted at the front
             triggerNewOrderFeedback(newlyCreated);
           }
           
           // Update live state list and mirror updated data back to browser storage
-          setAllOrders(ordersList);
-          safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(ordersList));
-          lastOrderCount = ordersList.length;
+          setAllOrders(merged);
+          safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(merged));
+          lastOrderCount = merged.length;
         } else {
           lastOrderCount = 0;
         }
@@ -1118,8 +1142,20 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
         const json = await res.json();
         if (json.success && json.data) {
           const ordersList = json.data;
-          setAllOrders(ordersList);
-          safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(ordersList));
+          const stored = safeLocalStorage.getItem("avexon_user_orders");
+          let merged = ordersList;
+          if (stored) {
+            try {
+              const parsed = JSON.parse(stored);
+              if (Array.isArray(parsed)) {
+                const serverIds = new Set(ordersList.map((o: any) => o.id));
+                const localOnly = parsed.filter((o: any) => o && o.id && !serverIds.has(o.id));
+                merged = [...ordersList, ...localOnly];
+              }
+            } catch (_) {}
+          }
+          setAllOrders(merged);
+          safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(merged));
         }
       } catch (e) {
         console.warn("Instant order polling error:", e);
@@ -1158,8 +1194,21 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
           .then(res => res.json())
           .then(json => {
             if (json.success && json.data) {
-              setAllOrders(json.data);
-              safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(json.data));
+              const freshOrders = json.data;
+              const stored = safeLocalStorage.getItem("avexon_user_orders");
+              let merged = freshOrders;
+              if (stored) {
+                try {
+                  const parsed = JSON.parse(stored);
+                  if (Array.isArray(parsed)) {
+                    const serverIds = new Set(freshOrders.map((o: any) => o.id));
+                    const localOnly = parsed.filter((o: any) => o && o.id && !serverIds.has(o.id));
+                    merged = [...freshOrders, ...localOnly];
+                  }
+                } catch (_) {}
+              }
+              setAllOrders(merged);
+              safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(merged));
             }
           })
           .catch(err => console.warn("Failed to fetch fresh orders on login: ", err));
@@ -1179,8 +1228,21 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
           .then(res => res.json())
           .then(json => {
             if (json.success && json.data) {
-              setAllOrders(json.data);
-              safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(json.data));
+              const freshOrders = json.data;
+              const stored = safeLocalStorage.getItem("avexon_user_orders");
+              let merged = freshOrders;
+              if (stored) {
+                try {
+                  const parsed = JSON.parse(stored);
+                  if (Array.isArray(parsed)) {
+                    const serverIds = new Set(freshOrders.map((o: any) => o.id));
+                    const localOnly = parsed.filter((o: any) => o && o.id && !serverIds.has(o.id));
+                    merged = [...freshOrders, ...localOnly];
+                  }
+                } catch (_) {}
+              }
+              setAllOrders(merged);
+              safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(merged));
             }
           })
           .catch(err => console.warn("Failed to fetch fresh orders on fallback login: ", err));

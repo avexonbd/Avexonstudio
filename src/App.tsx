@@ -146,16 +146,30 @@ export default function App() {
         return;
       }
 
-      if (localLastCount !== -1 && ordersList.length > localLastCount) {
-        const newlyCreated = ordersList[0]; // Newest order is unshifted at front
+      // Merge incoming server orders with existing local storage orders to protect local state from server resets
+      const stored = safeLocalStorage.getItem("avexon_user_orders");
+      let merged = ordersList;
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed)) {
+            const serverIds = new Set(ordersList.map((o: any) => o.id));
+            const localOnly = parsed.filter((o: any) => o && o.id && !serverIds.has(o.id));
+            merged = [...ordersList, ...localOnly];
+          }
+        } catch (_) {}
+      }
+
+      if (localLastCount !== -1 && merged.length > localLastCount) {
+        const newlyCreated = merged[0]; // Newest order is unshifted at front
         triggerDoubleChime();
         triggerPushNotification(newlyCreated);
       }
       
-      localLastCount = ordersList.length;
+      localLastCount = merged.length;
       
       // Sync list state dynamically to localStorage to trigger changes across all other navbar badges/indicators
-      safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(ordersList));
+      safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(merged));
       window.dispatchEvent(new Event("storage"));
     };
 

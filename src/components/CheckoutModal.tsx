@@ -274,12 +274,25 @@ export default function CheckoutModal({ isOpen, onClose, preselectedWebsiteTitle
           const response = await fetch("/api/orders");
           const resJson = await response.json();
           if (resJson.success && resJson.data) {
-            setAllOrders(resJson.data);
-            safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(resJson.data));
+            const serverOrders = resJson.data;
+            const stored = safeLocalStorage.getItem("avexon_user_orders");
+            let merged = serverOrders;
+            if (stored) {
+              try {
+                const parsed = JSON.parse(stored);
+                if (Array.isArray(parsed)) {
+                  const serverIds = new Set(serverOrders.map((o: any) => o.id));
+                  const localOnly = parsed.filter((o: any) => o && o.id && !serverIds.has(o.id));
+                  merged = [...serverOrders, ...localOnly];
+                }
+              } catch (_) {}
+            }
+            setAllOrders(merged);
+            safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(merged));
             
             // Show all projects first in tracking mode
             if (modalMode === 'tracking') {
-              setSearchedOrdersList(resJson.data);
+              setSearchedOrdersList(merged);
             }
           } else {
             const stored = safeLocalStorage.getItem("avexon_user_orders");
