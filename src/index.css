@@ -41,20 +41,28 @@
 }
 
 /* Support native smooth scrolling */
-html, body {
+html {
   scroll-behavior: smooth;
   scroll-padding-top: 80px;
   background-color: #010003;
   color-scheme: dark;
-
-  /* Optimize touch interactions and speed up tap events */
-  touch-action: manipulation;
+  overflow-x: hidden;
+  width: 100%;
+  min-height: 100dvh;
   -webkit-tap-highlight-color: transparent;
   text-size-adjust: none;
   -webkit-text-size-adjust: none;
-  
-  /* Optimize rendering speed and anti-aliased fonts */
   text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  background-color: #010003;
+  overflow-x: hidden;
+  width: 100%;
+  min-height: 100dvh;
+  -webkit-tap-highlight-color: transparent;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -67,8 +75,6 @@ html, body {
 /* Lock background scrolling when any modal or demo is active */
 body.modal-open {
   overflow: hidden !important;
-  height: 100dvh !important;
-  overscroll-behavior: contain;
 }
 
 /* Hide navigation bar dynamically when facilities details/benefits modal is open */
