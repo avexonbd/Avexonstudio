@@ -68,7 +68,6 @@ html, body {
 body.modal-open {
   overflow: hidden !important;
   height: 100dvh !important;
-  touch-action: none;
   overscroll-behavior: contain;
 }
 
@@ -1009,13 +1008,11 @@ body.modal-open #floating-navigation-system {
   will-change: transform;
 }
 
-/* Ensure smooth inertial scrolling for all layout scroll containers */
+/* Ensure smooth inertial scrolling for true scroll containers and custom scrollbars */
 .overflow-y-auto,
 .overflow-x-auto,
-[class*="overflow-y-"],
-[class*="overflow-x-"] {
+.custom-scrollbar {
   -webkit-overflow-scrolling: touch !important;
-  overscroll-behavior: contain;
 }
 
 /* Disable delayed touch checks for quick-tap experience on Safari and Chrome mobile */
