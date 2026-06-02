@@ -529,15 +529,16 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
   }, []);
 
   useEffect(() => {
-    if (allOrders.length === 0) return;
+    if (!allOrders || !Array.isArray(allOrders) || allOrders.length === 0) return;
     
     setNotifications(prev => {
       let changed = false;
       const updated = [...prev];
       
       allOrders.forEach(order => {
+        if (!order || !order.id) return;
         const notifId = `order-notif-${order.id}`;
-        const exists = updated.some(n => n.id === notifId);
+        const exists = updated.some(n => n && n.id === notifId);
         if (!exists) {
           const formattedTime = order.time || new Date().toLocaleString("bn-BD");
           updated.unshift({
@@ -550,11 +551,11 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
           });
           changed = true;
         } else {
-          const existingIndex = updated.findIndex(n => n.id === notifId);
+          const existingIndex = updated.findIndex(n => n && n.id === notifId);
           if (existingIndex !== -1) {
             const existingNotif = updated[existingIndex];
             const currentStatusText = `স্ট্যাটাস: ${order.status}`;
-            if (!existingNotif.description.includes(currentStatusText)) {
+            if (existingNotif && !existingNotif.description.includes(currentStatusText)) {
               updated[existingIndex] = {
                 ...existingNotif,
                 title: `অর্ডার আপডেট: ${order.customerName || "অজ্ঞাতনামা"}`,
@@ -797,7 +798,7 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
       const duration = Date.now() - startTime;
       
       const json = await res.json();
-      if (json.success && json.data) {
+      if (json.success && Array.isArray(json.data)) {
         const list: Order[] = json.data;
         const stored = safeLocalStorage.getItem("avexon_user_orders");
         let merged = list;
@@ -1017,7 +1018,7 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
         try {
           const res = await fetch("/api/orders");
           const json = await res.json();
-          if (json.success && json.data) {
+          if (json.success && Array.isArray(json.data)) {
             const serverOrders = json.data;
             const stored = safeLocalStorage.getItem("avexon_user_orders");
             let merged = serverOrders;
@@ -1164,7 +1165,7 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
       try {
         const res = await fetch("/api/orders");
         const json = await res.json();
-        if (json.success && json.data) {
+        if (json.success && Array.isArray(json.data)) {
           const ordersList: Order[] = json.data;
           const stored = safeLocalStorage.getItem("avexon_user_orders");
           let merged = ordersList;
@@ -1325,7 +1326,7 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
       try {
         const res = await fetch("/api/orders");
         const json = await res.json();
-        if (json.success && json.data) {
+        if (json.success && Array.isArray(json.data)) {
           const ordersList = json.data;
           const stored = safeLocalStorage.getItem("avexon_user_orders");
           let merged = ordersList;
@@ -1378,7 +1379,7 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
         fetch("/api/orders")
           .then(res => res.json())
           .then(json => {
-            if (json.success && json.data) {
+            if (json.success && Array.isArray(json.data)) {
               const freshOrders = json.data;
               const stored = safeLocalStorage.getItem("avexon_user_orders");
               let merged = freshOrders;
@@ -1412,7 +1413,7 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
         fetch("/api/orders")
           .then(res => res.json())
           .then(json => {
-            if (json.success && json.data) {
+            if (json.success && Array.isArray(json.data)) {
               const freshOrders = json.data;
               const stored = safeLocalStorage.getItem("avexon_user_orders");
               let merged = freshOrders;
@@ -3540,7 +3541,7 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
                               <img src={w.image} alt="" className="w-12 h-12 rounded-xl object-cover" />
                               <div>
                                 <h4 className="text-xs font-bold text-slate-100 font-sans leading-snug line-clamp-1">{w.title}</h4>
-                                <p className="text-[10px] text-purple-400 font-semibold">{w.category} • ৳{w.price.toLocaleString("bn-BD")}</p>
+                                <p className="text-[10px] text-purple-400 font-semibold">{w.category} • ৳{(Number(w.price) || 0).toLocaleString("bn-BD")}</p>
                               </div>
                             </div>
                             <div className="flex items-center gap-1.5">
@@ -4409,19 +4410,21 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
                 {/* 7. ORDERS & TRACKING TAB */}
                 {activeTab === "orders" && (() => {
                   // Compute dynamic analytics inside the view to ensure instant reactivity and avoid sync lag
-                  const totalCount = allOrders.length;
-                  const pendingCount = allOrders.filter(o => o.status === "Pending" || o.status === "Payment Checking").length;
-                  const runningCount = allOrders.filter(o => o.status === "Confirmed" || o.status === "Working").length;
-                  const completedCount = allOrders.filter(o => o.status === "Done").length;
-                  const totalEarnings = allOrders.reduce((sum, o) => {
-                    if (o.status !== "Pending" && o.status !== "Payment Checking") {
+                  const safeOrders = Array.isArray(allOrders) ? allOrders.filter(Boolean) : [];
+                  const totalCount = safeOrders.length;
+                  const pendingCount = safeOrders.filter(o => o && (o.status === "Pending" || o.status === "Payment Checking")).length;
+                  const runningCount = safeOrders.filter(o => o && (o.status === "Confirmed" || o.status === "Working")).length;
+                  const completedCount = safeOrders.filter(o => o && o.status === "Done").length;
+                  const totalEarnings = safeOrders.reduce((sum, o) => {
+                    if (o && o.status !== "Pending" && o.status !== "Payment Checking") {
                       return sum + (Number(o.price) || 0);
                     }
                     return sum;
                   }, 0);
 
                   // Perform precise filtering based on tab selection & search queries
-                  const currentFiltered = allOrders.filter(o => {
+                  const currentFiltered = safeOrders.filter(o => {
+                    if (!o) return false;
                     // 1. Tab grouping filter
                     if (orderStatusFilter !== "all") {
                       if (orderStatusFilter === "Pending") {
@@ -4840,7 +4843,7 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
                                         পেমেন্ট গেটওয়ে: <span className="text-purple-300 font-sans font-black uppercase text-[9px] bg-purple-500/10 border border-purple-500/20 px-1.5 py-0.5 rounded leading-none">{o.paymentMethod || "Bkash/Nagad"}</span>
                                       </div>
                                       <div>
-                                        বাজেট: <span className="text-emerald-400 font-sans font-bold text-xs">৳{o.price.toLocaleString("bn-BD")}</span>
+                                        বাজেট: <span className="text-emerald-400 font-sans font-bold text-xs">৳{(Number(o.price) || 0).toLocaleString("bn-BD")}</span>
                                       </div>
                                     </div>
 
