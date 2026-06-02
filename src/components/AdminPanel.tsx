@@ -599,6 +599,46 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
   const [manualSupabaseUrlOrders, setManualSupabaseUrlOrders] = useState<string>(() => safeLocalStorage.getItem("VITE_SUPABASE_URL_ORDERS") || "");
   const [manualSupabaseKeyOrders, setManualSupabaseKeyOrders] = useState<string>(() => safeLocalStorage.getItem("VITE_SUPABASE_ANON_KEY_ORDERS") || "");
 
+  // Synchronize active config from server on mount to prevent accidental reset overrides
+  useEffect(() => {
+    const syncSupaConfigOnMount = async () => {
+      try {
+        const res = await fetch("/api/supabase-config");
+        const data = await res.json();
+        if (data.success && data.config) {
+          const c = data.config;
+          let changed = false;
+          if (c.VITE_SUPABASE_URL && c.VITE_SUPABASE_URL !== safeLocalStorage.getItem("VITE_SUPABASE_URL")) {
+            safeLocalStorage.setItem("VITE_SUPABASE_URL", c.VITE_SUPABASE_URL);
+            setManualSupabaseUrl(c.VITE_SUPABASE_URL);
+            changed = true;
+          }
+          if (c.VITE_SUPABASE_ANON_KEY && c.VITE_SUPABASE_ANON_KEY !== safeLocalStorage.getItem("VITE_SUPABASE_ANON_KEY")) {
+            safeLocalStorage.setItem("VITE_SUPABASE_ANON_KEY", c.VITE_SUPABASE_ANON_KEY);
+            setManualSupabaseKey(c.VITE_SUPABASE_ANON_KEY);
+            changed = true;
+          }
+          if (c.VITE_SUPABASE_URL_ORDERS && c.VITE_SUPABASE_URL_ORDERS !== safeLocalStorage.getItem("VITE_SUPABASE_URL_ORDERS")) {
+            safeLocalStorage.setItem("VITE_SUPABASE_URL_ORDERS", c.VITE_SUPABASE_URL_ORDERS);
+            setManualSupabaseUrlOrders(c.VITE_SUPABASE_URL_ORDERS);
+            changed = true;
+          }
+          if (c.VITE_SUPABASE_ANON_KEY_ORDERS && c.VITE_SUPABASE_ANON_KEY_ORDERS !== safeLocalStorage.getItem("VITE_SUPABASE_ANON_KEY_ORDERS")) {
+            safeLocalStorage.setItem("VITE_SUPABASE_ANON_KEY_ORDERS", c.VITE_SUPABASE_ANON_KEY_ORDERS);
+            setManualSupabaseKeyOrders(c.VITE_SUPABASE_ANON_KEY_ORDERS);
+            changed = true;
+          }
+          if (changed) {
+            console.log("Supabase active configuration synced from server to local storage successfully.");
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to retrieve Supabase active configuration from server:", err);
+      }
+    };
+    syncSupaConfigOnMount();
+  }, []);
+
   const handleSaveManualSupabase = async () => {
     safeLocalStorage.setItem("VITE_SUPABASE_URL", manualSupabaseUrl.trim());
     safeLocalStorage.setItem("VITE_SUPABASE_ANON_KEY", manualSupabaseKey.trim());

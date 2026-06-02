@@ -1559,7 +1559,7 @@ export default function CheckoutModal({ isOpen, onClose, preselectedWebsiteTitle
                             <div className="flex items-center justify-between pt-2.5 border-t border-purple-500/5 text-xs select-none">
                               <div className="flex items-center gap-2">
                                 <span className="text-slate-500">মূল্য:</span>
-                                <strong className="text-slate-200 font-sans">৳{order.price.toLocaleString("bn-BD")}</strong>
+                                <strong className="text-slate-200 font-sans">৳{(Number(order.price) || 0).toLocaleString("bn-BD")}</strong>
                               </div>
 
                               <div className="flex items-center gap-2.5">
@@ -2218,7 +2218,7 @@ export default function CheckoutModal({ isOpen, onClose, preselectedWebsiteTitle
                       </p>
                     </div>
                     <span className="font-mono font-bold text-slate-800 shrink-0 text-sm">
-                      ৳{invoiceOrder.price.toLocaleString("bn-BD")}
+                      ৳{(Number(invoiceOrder?.price) || 0).toLocaleString("bn-BD")}
                     </span>
                   </div>
                 </div>
@@ -2232,7 +2232,7 @@ export default function CheckoutModal({ isOpen, onClose, preselectedWebsiteTitle
                     <strong className="text-xs shrink-0 font-sans">সর্বমোট পেমেন্ট ফি</strong>
                   </div>
                   <span className="text-lg font-mono font-black text-emerald-400 tracking-tight">
-                    ৳{invoiceOrder.price.toLocaleString("bn-BD")}
+                    ৳{(Number(invoiceOrder?.price) || 0).toLocaleString("bn-BD")}
                   </span>
                 </div>
 

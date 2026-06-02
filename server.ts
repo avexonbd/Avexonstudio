@@ -528,6 +528,33 @@ app.post("/api/content", async (req, res) => {
   }
 });
 
+// API to get current active Supabase config (from server process.env and JSON config file combined)
+app.get("/api/supabase-config", (req, res) => {
+  try {
+    let config = {
+      VITE_SUPABASE_URL: process.env.VITE_SUPABASE_URL || "",
+      VITE_SUPABASE_ANON_KEY: process.env.VITE_SUPABASE_ANON_KEY || "",
+      VITE_SUPABASE_URL_ORDERS: process.env.VITE_SUPABASE_URL_ORDERS || "",
+      VITE_SUPABASE_ANON_KEY_ORDERS: process.env.VITE_SUPABASE_ANON_KEY_ORDERS || ""
+    };
+
+    if (fs.existsSync(SUPABASE_CONFIG_FILE)) {
+      try {
+        const fileConfig = JSON.parse(fs.readFileSync(SUPABASE_CONFIG_FILE, "utf-8"));
+        config.VITE_SUPABASE_URL = config.VITE_SUPABASE_URL || fileConfig.VITE_SUPABASE_URL || "";
+        config.VITE_SUPABASE_ANON_KEY = config.VITE_SUPABASE_ANON_KEY || fileConfig.VITE_SUPABASE_ANON_KEY || "";
+        config.VITE_SUPABASE_URL_ORDERS = config.VITE_SUPABASE_URL_ORDERS || fileConfig.VITE_SUPABASE_URL_ORDERS || "";
+        config.VITE_SUPABASE_ANON_KEY_ORDERS = config.VITE_SUPABASE_ANON_KEY_ORDERS || fileConfig.VITE_SUPABASE_ANON_KEY_ORDERS || "";
+      } catch (_) {}
+    }
+
+    res.json({ success: true, config });
+  } catch (err: any) {
+    console.error("Error reading supabase config:", err);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // API to save manual Supabase credentials to src/supabase_config.json
 app.post("/api/supabase-config", (req, res) => {
   try {

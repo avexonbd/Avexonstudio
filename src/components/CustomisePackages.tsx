@@ -2079,7 +2079,7 @@ export default function CustomisePackages({ onOrderRequest }: CustomisePackagesP
                   <div className="pt-0.5 pb-1 border-b border-purple-950/15">
                     <div className="flex items-baseline gap-1">
                       <span className="text-base sm:text-lg font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-white via-slate-100 to-fuchsia-400 font-sans tracking-tight">
-                        ৳{plan.price.toLocaleString("bn-BD")}
+                        ৳{(Number(plan?.price) || 0).toLocaleString("bn-BD")}
                       </span>
                       <span className="text-slate-500 text-[8px] font-semibold">/ এককালীন</span>
                     </div>
@@ -2300,7 +2300,7 @@ export default function CustomisePackages({ onOrderRequest }: CustomisePackagesP
                     <div>
                       <span className="text-[10px] text-slate-500 font-bold block leading-none mb-1">প্যাকেজ মূল্য</span>
                       <span className="text-base sm:text-lg font-black text-transparent bg-clip-text bg-gradient-to-r from-white to-fuchsia-350 font-sans tracking-tight leading-none block">
-                        ৳{expandedPlan.price.toLocaleString("bn-BD")}
+                        ৳{(Number(expandedPlan?.price) || 0).toLocaleString("bn-BD")}
                       </span>
                     </div>
                     <button
