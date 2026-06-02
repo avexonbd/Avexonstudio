@@ -422,32 +422,9 @@ function getSupabaseClient() {
   return null;
 }
 
-// Intelligently instantiate a server-side Supabase client for a separate orders sync if configured
+// Intelligently instantiate a server-side Supabase client for unified content and orders cloud persistent sync
 function getSupabaseOrdersClient() {
-  let supabaseUrl = process.env.VITE_SUPABASE_URL_ORDERS || "";
-  let supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY_ORDERS || "";
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    if (fs.existsSync(SUPABASE_CONFIG_FILE)) {
-      try {
-        const config = JSON.parse(fs.readFileSync(SUPABASE_CONFIG_FILE, "utf-8"));
-        supabaseUrl = supabaseUrl || config.VITE_SUPABASE_URL_ORDERS || "";
-        supabaseAnonKey = supabaseAnonKey || config.VITE_SUPABASE_ANON_KEY_ORDERS || "";
-      } catch (e) {
-        console.warn("Failed to parse src/supabase_config.json for orders server-side:", e);
-      }
-    }
-  }
-
-  supabaseUrl = supabaseUrl.trim();
-  supabaseAnonKey = supabaseAnonKey.trim();
-
-  if (supabaseUrl && supabaseAnonKey && supabaseUrl !== "YOUR_SUPABASE_URL_HERE" && supabaseUrl.length > 0) {
-    return createClient(supabaseUrl, supabaseAnonKey, {
-      auth: { persistSession: false }
-    });
-  }
-  return getSupabaseClient(); // default fallback
+  return getSupabaseClient();
 }
 
 // API to get content config from sever JSON file
@@ -533,9 +510,7 @@ app.get("/api/supabase-config", (req, res) => {
   try {
     let config = {
       VITE_SUPABASE_URL: process.env.VITE_SUPABASE_URL || "",
-      VITE_SUPABASE_ANON_KEY: process.env.VITE_SUPABASE_ANON_KEY || "",
-      VITE_SUPABASE_URL_ORDERS: process.env.VITE_SUPABASE_URL_ORDERS || "",
-      VITE_SUPABASE_ANON_KEY_ORDERS: process.env.VITE_SUPABASE_ANON_KEY_ORDERS || ""
+      VITE_SUPABASE_ANON_KEY: process.env.VITE_SUPABASE_ANON_KEY || ""
     };
 
     if (fs.existsSync(SUPABASE_CONFIG_FILE)) {
@@ -543,8 +518,6 @@ app.get("/api/supabase-config", (req, res) => {
         const fileConfig = JSON.parse(fs.readFileSync(SUPABASE_CONFIG_FILE, "utf-8"));
         config.VITE_SUPABASE_URL = config.VITE_SUPABASE_URL || fileConfig.VITE_SUPABASE_URL || "";
         config.VITE_SUPABASE_ANON_KEY = config.VITE_SUPABASE_ANON_KEY || fileConfig.VITE_SUPABASE_ANON_KEY || "";
-        config.VITE_SUPABASE_URL_ORDERS = config.VITE_SUPABASE_URL_ORDERS || fileConfig.VITE_SUPABASE_URL_ORDERS || "";
-        config.VITE_SUPABASE_ANON_KEY_ORDERS = config.VITE_SUPABASE_ANON_KEY_ORDERS || fileConfig.VITE_SUPABASE_ANON_KEY_ORDERS || "";
       } catch (_) {}
     }
 
@@ -558,14 +531,12 @@ app.get("/api/supabase-config", (req, res) => {
 // API to save manual Supabase credentials to src/supabase_config.json
 app.post("/api/supabase-config", (req, res) => {
   try {
-    const { url, anonKey, urlOrders, anonKeyOrders } = req.body;
+    const { url, anonKey } = req.body;
     
     // Read existing config first to prevent accidental complete wipes of either if only one is updated
     let existingConfig = {
       VITE_SUPABASE_URL: "",
-      VITE_SUPABASE_ANON_KEY: "",
-      VITE_SUPABASE_URL_ORDERS: "",
-      VITE_SUPABASE_ANON_KEY_ORDERS: ""
+      VITE_SUPABASE_ANON_KEY: ""
     };
     if (fs.existsSync(SUPABASE_CONFIG_FILE)) {
       try {
@@ -575,9 +546,7 @@ app.post("/api/supabase-config", (req, res) => {
 
     const config = {
       VITE_SUPABASE_URL: url !== undefined ? url : existingConfig.VITE_SUPABASE_URL,
-      VITE_SUPABASE_ANON_KEY: anonKey !== undefined ? anonKey : existingConfig.VITE_SUPABASE_ANON_KEY,
-      VITE_SUPABASE_URL_ORDERS: urlOrders !== undefined ? urlOrders : existingConfig.VITE_SUPABASE_URL_ORDERS,
-      VITE_SUPABASE_ANON_KEY_ORDERS: anonKeyOrders !== undefined ? anonKeyOrders : existingConfig.VITE_SUPABASE_ANON_KEY_ORDERS
+      VITE_SUPABASE_ANON_KEY: anonKey !== undefined ? anonKey : existingConfig.VITE_SUPABASE_ANON_KEY
     };
     
     fs.writeFileSync(SUPABASE_CONFIG_FILE, JSON.stringify(config, null, 2), "utf-8");
@@ -609,7 +578,32 @@ app.get("/api/orders", async (req, res) => {
         const { data: orderRows, error: orderTableError } = result as any;
 
         if (!orderTableError && Array.isArray(orderRows)) {
-          ordersList = orderRows.map((row: any) => row.value || row);
+          ordersList = orderRows.map((row: any) => {
+            if (!row) return null;
+            // Case 1: row.value is an object
+            if (row.value && typeof row.value === "object") {
+              return { ...row.value, id: row.value.id || row.id };
+            }
+            // Case 2: row.value is a JSON string
+            if (row.value && typeof row.value === "string") {
+              try {
+                const parsedVal = JSON.parse(row.value);
+                if (parsedVal && typeof parsedVal === "object") {
+                  return { ...parsedVal, id: parsedVal.id || row.id };
+                }
+              } catch (_) {}
+            }
+            // Case 3: Flat row with direct columns
+            if (row.customerName || row.customerPhone || row.price || row.status) {
+              const cleanRow = { ...row };
+              if (cleanRow.value === null || cleanRow.value === undefined) {
+                delete cleanRow.value;
+              }
+              return cleanRow;
+            }
+            // Case 4: Fallback
+            return row.value || row;
+          }).filter(Boolean);
           fetchedFromSupabase = true;
         } else {
           console.warn("avexon_orders table select query failed. Attempting legacy avexon_content table sync...");

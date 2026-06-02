@@ -36,30 +36,8 @@ export const supabase = isSupabaseConfigured
     })
   : null;
 
-// Dedicated Orders Supabase Config
-const supabaseUrlOrders = (
-  getSavedCredential("VITE_SUPABASE_URL_ORDERS") ||
-  ((supabaseConfig as any).VITE_SUPABASE_URL_ORDERS || "") ||
-  (((import.meta as any).env?.VITE_SUPABASE_URL_ORDERS) || "")
-).trim();
-
-const supabaseAnonKeyOrders = (
-  getSavedCredential("VITE_SUPABASE_ANON_KEY_ORDERS") ||
-  ((supabaseConfig as any).VITE_SUPABASE_ANON_KEY_ORDERS || "") ||
-  (((import.meta as any).env?.VITE_SUPABASE_ANON_KEY_ORDERS) || "")
-).trim();
-
-export const isSupabaseOrdersConfigured = Boolean(
-  (supabaseUrlOrders && supabaseAnonKeyOrders && supabaseUrlOrders !== "YOUR_SUPABASE_URL_HERE" && supabaseUrlOrders.length > 0) ||
-  isSupabaseConfigured
-);
-
-export const supabaseOrders = (supabaseUrlOrders && supabaseAnonKeyOrders && supabaseUrlOrders !== "YOUR_SUPABASE_URL_HERE" && supabaseUrlOrders.length > 0)
-  ? createClient(supabaseUrlOrders, supabaseAnonKeyOrders, {
-      auth: {
-        persistSession: false,
-      },
-    })
-  : supabase; // Fallback to general Supabase if separate orders DB which isn't setup
+// Dedicated Orders Supabase Config - Now fully unified with the primary Supabase client to simplify setups
+export const isSupabaseOrdersConfigured = isSupabaseConfigured;
+export const supabaseOrders = supabase;
 
 

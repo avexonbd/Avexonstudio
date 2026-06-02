@@ -268,21 +268,46 @@ export default function CheckoutModal({ isOpen, onClose, preselectedWebsiteTitle
 
   // Read orders list if available
   useEffect(() => {
+    const normalizeSupabaseOrder = (record: any) => {
+      if (!record) return null;
+      if (record.value && typeof record.value === "object") {
+        return { ...record.value, id: record.value.id || record.id };
+      }
+      if (record.value && typeof record.value === "string") {
+        try {
+          const parsed = JSON.parse(record.value);
+          if (parsed && typeof parsed === "object") {
+            return { ...parsed, id: parsed.id || record.id };
+          }
+        } catch (_) {}
+      }
+      if (record.customerName || record.customerPhone || record.price || record.status) {
+        const clean = { ...record };
+        if (clean.value === null || clean.value === undefined) {
+          delete clean.value;
+        }
+        return clean;
+      }
+      return record;
+    };
+
     if (isOpen) {
       const fetchServerOrders = async () => {
         try {
           const response = await fetch("/api/orders");
           const resJson = await response.json();
           if (resJson.success && resJson.data) {
-            const serverOrders = resJson.data;
+            const rawOrders: any[] = resJson.data;
+            const serverOrders: Order[] = rawOrders.map(normalizeSupabaseOrder).filter(Boolean);
             const stored = safeLocalStorage.getItem("avexon_user_orders");
             let merged = serverOrders;
             if (stored) {
               try {
                 const parsed = JSON.parse(stored);
                 if (Array.isArray(parsed)) {
+                  const normalizedStored = parsed.map(normalizeSupabaseOrder).filter(Boolean);
                   const serverIds = new Set(serverOrders.map((o: any) => o.id));
-                  const localOnly = parsed.filter((o: any) => o && o.id && !serverIds.has(o.id));
+                  const localOnly = normalizedStored.filter((o: any) => o && o.id && !serverIds.has(o.id));
                   merged = [...serverOrders, ...localOnly];
                 }
               } catch (_) {}
@@ -298,9 +323,10 @@ export default function CheckoutModal({ isOpen, onClose, preselectedWebsiteTitle
             const stored = safeLocalStorage.getItem("avexon_user_orders");
             if (stored) {
               const parsed = JSON.parse(stored) as Order[];
-              setAllOrders(parsed);
+              const normalized = parsed.map(normalizeSupabaseOrder).filter(Boolean);
+              setAllOrders(normalized);
               if (modalMode === 'tracking') {
-                setSearchedOrdersList(parsed);
+                setSearchedOrdersList(normalized);
               }
             }
           }
@@ -309,9 +335,10 @@ export default function CheckoutModal({ isOpen, onClose, preselectedWebsiteTitle
           const stored = safeLocalStorage.getItem("avexon_user_orders");
           if (stored) {
             const parsed = JSON.parse(stored) as Order[];
-            setAllOrders(parsed);
+            const normalized = parsed.map(normalizeSupabaseOrder).filter(Boolean);
+            setAllOrders(normalized);
             if (modalMode === 'tracking') {
-              setSearchedOrdersList(parsed);
+              setSearchedOrdersList(normalized);
             }
           }
         }
@@ -324,6 +351,29 @@ export default function CheckoutModal({ isOpen, onClose, preselectedWebsiteTitle
   useEffect(() => {
     let ordersSubscription: any = null;
     
+    const normalizeSupabaseOrder = (record: any) => {
+      if (!record) return null;
+      if (record.value && typeof record.value === "object") {
+        return { ...record.value, id: record.value.id || record.id };
+      }
+      if (record.value && typeof record.value === "string") {
+        try {
+          const parsed = JSON.parse(record.value);
+          if (parsed && typeof parsed === "object") {
+            return { ...parsed, id: parsed.id || record.id };
+          }
+        } catch (_) {}
+      }
+      if (record.customerName || record.customerPhone || record.price || record.status) {
+        const clean = { ...record };
+        if (clean.value === null || clean.value === undefined) {
+          delete clean.value;
+        }
+        return clean;
+      }
+      return record;
+    };
+
     if (isSupabaseOrdersConfigured && supabaseOrders && isOpen) {
       ordersSubscription = supabaseOrders
         .channel("avexon_orders_realtime_modal")
@@ -351,55 +401,59 @@ export default function CheckoutModal({ isOpen, onClose, preselectedWebsiteTitle
               }
             } else if (payload.eventType === "INSERT") {
               const newRecord = payload.new;
-              if (newRecord && newRecord.value) {
-                const newOrder = newRecord.value;
-                setAllOrders(prev => {
-                  const exists = prev.some(o => o.id === newOrder.id);
-                  if (exists) return prev;
-                  const updated = [newOrder, ...prev];
-                  safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(updated));
-                  return updated;
-                });
+              if (newRecord) {
+                const newOrder = normalizeSupabaseOrder(newRecord);
+                if (newOrder && newOrder.id) {
+                  setAllOrders(prev => {
+                    const exists = prev.some(o => o.id === newOrder.id);
+                    if (exists) return prev;
+                    const updated = [newOrder, ...prev];
+                    safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(updated));
+                    return updated;
+                  });
+                }
               }
             } else if (payload.eventType === "UPDATE") {
               const updatedRecord = payload.new;
-              if (updatedRecord && updatedRecord.value) {
-                const updatedOrder = updatedRecord.value;
-                setAllOrders(prev => {
-                  const index = prev.findIndex(o => o.id === updatedOrder.id);
-                  let updated;
-                  if (index !== -1) {
-                    updated = [...prev];
-                    updated[index] = updatedOrder;
-                  } else {
-                    updated = [updatedOrder, ...prev];
-                  }
-                  safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(updated));
-                  return updated;
-                });
+              if (updatedRecord) {
+                const updatedOrder = normalizeSupabaseOrder(updatedRecord);
+                if (updatedOrder && updatedOrder.id) {
+                  setAllOrders(prev => {
+                    const index = prev.findIndex(o => o.id === updatedOrder.id);
+                    let updated;
+                    if (index !== -1) {
+                      updated = [...prev];
+                      updated[index] = updatedOrder;
+                    } else {
+                      updated = [updatedOrder, ...prev];
+                    }
+                    safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(updated));
+                    return updated;
+                  });
 
-                // Update Active / Searched targets on receiving instant broadcast!
-                setActiveOrder(prev => {
-                  if (prev && prev.id === updatedOrder.id) {
-                    return updatedOrder;
-                  }
-                  return prev;
-                });
-                setSearchedOrder(prev => {
-                  if (prev && prev.id === updatedOrder.id) {
-                    return updatedOrder;
-                  }
-                  return prev;
-                });
-                setSearchedOrdersList(prev => {
-                  const index = prev.findIndex(o => o.id === updatedOrder.id);
-                  if (index !== -1) {
-                    const copy = [...prev];
-                    copy[index] = updatedOrder;
-                    return copy;
-                  }
-                  return prev;
-                });
+                  // Update Active / Searched targets on receiving instant broadcast!
+                  setActiveOrder(prev => {
+                    if (prev && prev.id === updatedOrder.id) {
+                      return updatedOrder;
+                    }
+                    return prev;
+                  });
+                  setSearchedOrder(prev => {
+                    if (prev && prev.id === updatedOrder.id) {
+                      return updatedOrder;
+                    }
+                    return prev;
+                  });
+                  setSearchedOrdersList(prev => {
+                    const index = prev.findIndex(o => o.id === updatedOrder.id);
+                    if (index !== -1) {
+                      const copy = [...prev];
+                      copy[index] = updatedOrder;
+                      return copy;
+                    }
+                    return prev;
+                  });
+                }
               }
             }
           }

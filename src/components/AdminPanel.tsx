@@ -593,12 +593,6 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
   const [manualSupabaseUrl, setManualSupabaseUrl] = useState<string>(() => safeLocalStorage.getItem("VITE_SUPABASE_URL") || "");
   const [manualSupabaseKey, setManualSupabaseKey] = useState<string>(() => safeLocalStorage.getItem("VITE_SUPABASE_ANON_KEY") || "");
 
-  // Dedicated Orders Supabase Testing States
-  const [supabaseOrdersTestStatus, setSupabaseOrdersTestStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
-  const [supabaseOrdersTestMessage, setSupabaseOrdersTestMessage] = useState<string>("");
-  const [manualSupabaseUrlOrders, setManualSupabaseUrlOrders] = useState<string>(() => safeLocalStorage.getItem("VITE_SUPABASE_URL_ORDERS") || "");
-  const [manualSupabaseKeyOrders, setManualSupabaseKeyOrders] = useState<string>(() => safeLocalStorage.getItem("VITE_SUPABASE_ANON_KEY_ORDERS") || "");
-
   // Synchronize active config from server on mount to prevent accidental reset overrides
   useEffect(() => {
     const syncSupaConfigOnMount = async () => {
@@ -618,16 +612,6 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
             setManualSupabaseKey(c.VITE_SUPABASE_ANON_KEY);
             changed = true;
           }
-          if (c.VITE_SUPABASE_URL_ORDERS && c.VITE_SUPABASE_URL_ORDERS !== safeLocalStorage.getItem("VITE_SUPABASE_URL_ORDERS")) {
-            safeLocalStorage.setItem("VITE_SUPABASE_URL_ORDERS", c.VITE_SUPABASE_URL_ORDERS);
-            setManualSupabaseUrlOrders(c.VITE_SUPABASE_URL_ORDERS);
-            changed = true;
-          }
-          if (c.VITE_SUPABASE_ANON_KEY_ORDERS && c.VITE_SUPABASE_ANON_KEY_ORDERS !== safeLocalStorage.getItem("VITE_SUPABASE_ANON_KEY_ORDERS")) {
-            safeLocalStorage.setItem("VITE_SUPABASE_ANON_KEY_ORDERS", c.VITE_SUPABASE_ANON_KEY_ORDERS);
-            setManualSupabaseKeyOrders(c.VITE_SUPABASE_ANON_KEY_ORDERS);
-            changed = true;
-          }
           if (changed) {
             console.log("Supabase active configuration synced from server to local storage successfully.");
           }
@@ -642,8 +626,10 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
   const handleSaveManualSupabase = async () => {
     safeLocalStorage.setItem("VITE_SUPABASE_URL", manualSupabaseUrl.trim());
     safeLocalStorage.setItem("VITE_SUPABASE_ANON_KEY", manualSupabaseKey.trim());
-    safeLocalStorage.setItem("VITE_SUPABASE_URL_ORDERS", manualSupabaseUrlOrders.trim());
-    safeLocalStorage.setItem("VITE_SUPABASE_ANON_KEY_ORDERS", manualSupabaseKeyOrders.trim());
+
+    // Clean up residual orders keys to be fully clean
+    safeLocalStorage.removeItem("VITE_SUPABASE_URL_ORDERS");
+    safeLocalStorage.removeItem("VITE_SUPABASE_ANON_KEY_ORDERS");
 
     try {
       await fetch("/api/supabase-config", {
@@ -651,9 +637,7 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           url: manualSupabaseUrl.trim(),
-          anonKey: manualSupabaseKey.trim(),
-          urlOrders: manualSupabaseUrlOrders.trim(),
-          anonKeyOrders: manualSupabaseKeyOrders.trim()
+          anonKey: manualSupabaseKey.trim()
         })
       });
     } catch (e) {
@@ -673,8 +657,6 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
     safeLocalStorage.removeItem("VITE_SUPABASE_ANON_KEY_ORDERS");
     setManualSupabaseUrl("");
     setManualSupabaseKey("");
-    setManualSupabaseUrlOrders("");
-    setManualSupabaseKeyOrders("");
 
     try {
       await fetch("/api/supabase-config", {
@@ -682,9 +664,7 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           url: "",
-          anonKey: "",
-          urlOrders: "",
-          anonKeyOrders: ""
+          anonKey: ""
         })
       });
     } catch (e) {
@@ -706,19 +686,19 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
         throw new Error("Supabase URL অথবা API Key কনফিগার করা হয়নি! দয়া করে আপনার ক্লাউড এনভায়রনমেন্ট বা .env ফাইলে VITE_SUPABASE_URL এবং VITE_SUPABASE_ANON_KEY যোগ করুন।");
       }
 
-      // 1. টেস্ট রিড কুয়েরি (SELECT TEST)
-      setSupabaseTestMessage("ধাপ ১: ডাটাবেস আংশিক রিডিং মডিউল টেস্ট করা হচ্ছে...");
+      // 1. টেস্ট রিড কুয়েরি (SELECT TEST on avexon_content)
+      setSupabaseTestMessage("ধাপ ১: কনটেন্ট ডাটাবেস আংশিক রিডিং মডিউল টেস্ট করা হচ্ছে...");
       const { data: readData, error: readError } = await supabase
         .from("avexon_content")
         .select("key")
         .limit(1);
 
       if (readError) {
-        throw new Error(`রিড (SELECT) টেস্ট করতে ব্যর্থ হয়েছে। দয়া করে নিশ্চিত করুন আপনার SQL স্ক্রিপ্টটি Supabase SQL Editor-এ রান করেছেন এবং 'avexon_content' টেবিলটি সফলভাবে তৈরি হয়েছে। Error: ${readError.message}`);
+        throw new Error(`কনটেন্ট রিড (SELECT) টেস্ট করতে ব্যর্থ হয়েছে। দয়া করে নিশ্চিত করুন আপনার SQL স্ক্রিপ্টটি Supabase SQL Editor-এ রান করেছেন এবং 'avexon_content' টেবিলটি সফলভাবে তৈরি হয়েছে। Error: ${readError.message}`);
       }
 
-      // 2. টেস্ট রাইট/ডিলিট কুয়েরি (WRITE/DELETE CURD TEST)
-      setSupabaseTestMessage("ধাপ ২: ডাটাবেসে রিয়েল-টাইম ডাটা রাইট ও সিকিউরিটি চেক করা হচ্ছে...");
+      // 2. টেস্ট রাইট/ডিলিট কুয়েরি (WRITE/DELETE CURD TEST on avexon_content)
+      setSupabaseTestMessage("ধাপ ২: কনটেন্ট ডাটাবেসে রিয়েল-টাইম ডাটা রাইট ও সিকিউরিটি চেক করা হচ্ছে...");
       const dummyKey = `test_connection_ping_${Date.now()}`;
       const { error: insertError } = await supabase
         .from("avexon_content")
@@ -729,57 +709,38 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
 
       if (insertError) {
         if (insertError.message.includes("violates row-level security policy")) {
-          throw new Error(`রাইট (UPSERT) টেস্ট করতে ব্যর্থ হয়েছে! আপনার Supabase টেবিলে Row-Level Security (RLS) সক্রিয় রয়েছে কিন্তু রাইট পলিসি অনুমোদিত নয়। নিচের SQL কোড অংশের ৪ ও ৫ নং লাইনে দেওয়া পলিসি স্ক্রিপ্টটি কপি করে অনুগ্রহ করে Supabase SQL Editor-এ রান করুন।`);
+          throw new Error(`কনটেন্ট রাইট (UPSERT) টেস্ট করতে ব্যর্থ হয়েছে! আপনার Supabase টেবিলে Row-Level Security (RLS) সক্রিয় রয়েছে কিন্তু রাইট পলিসি অনুমোদিত নয়। নিচের SQL কোড অংশের ৪ ও ৫ নং লাইনে দেওয়া পলিসি স্ক্রিপ্টটি কপি করে অনুগ্রহ করে Supabase SQL Editor-এ রান করুন।`);
         }
-        throw new Error(`রাইট (UPSERT) টেস্ট করতে ব্যর্থ হয়েছে। RLS Rules বা পলিসি যোগ করা হয়েছে কি? Error: ${insertError.message}`);
+        throw new Error(`কনটেন্ট রাইট (UPSERT) টেস্ট করতে ব্যর্থ হয়েছে। RLS Rules বা পলিসি যোগ করা হয়েছে কি? Error: ${insertError.message}`);
       }
 
       // 3. ডিলিট করা
-      setSupabaseTestMessage("ধাপ ৩: টেস্ট ডাটা সাফ এবং সেশন ক্লোজ করা হচ্ছে...");
+      setSupabaseTestMessage("ধাপ ৩: কনটেন্ট টেস্ট ডাটা সাফ করা হচ্ছে...");
       const { error: deleteError } = await supabase
         .from("avexon_content")
         .delete()
         .eq("key", dummyKey);
 
       if (deleteError) {
-        console.warn("টেস্ট ডাটা মুছতে ব্যর্থ হয়েছে, তবে রাইট কুয়েরি কাজ করেছে:", deleteError.message);
+        console.warn("কনটেন্ট টেস্ট ডাটা মুছতে ব্যর্থ হয়েছে, তবে রাইট কুয়েরি কাজ করেছে:", deleteError.message);
       }
 
-      setSupabaseTestStatus("success");
-      setSupabaseTestMessage("অভিনন্দন! আপনার Supabase কানেকশন সম্পূর্ণ সচল রয়েছে। রিড, রাইট, এবং ডিলিট টেস্ট ১০০% সফল। রিয়েল-টাইম লাইভ ব্রডকাস্টিং পুরোপুরি কার্যকর!");
-      triggerSuccessAlert("সুপাবেস পরীক্ষা সফল হয়েছে!");
-    } catch (err: any) {
-      console.error("Supabase test error:", err);
-      setSupabaseTestStatus("error");
-      setSupabaseTestMessage(err.message || "অজানা ত্রুটি ঘটেছে। কানেকশন ব্যর্থ হয়েছে।");
-    }
-  };
-
-  const handleTestSupabaseOrders = async () => {
-    setSupabaseOrdersTestStatus("testing");
-    setSupabaseOrdersTestMessage("অর্ডার সুপাবেস ডাটাবেস সংযোগ এবং টেবিল অ্যাক্টিভিটি পরীক্ষা করা হচ্ছে...");
-
-    try {
-      if (!isSupabaseOrdersConfigured || !supabaseOrders) {
-        throw new Error("অর্ডার সুপাবেস URL অথবা API Key কনফিগার করা হয়নি! দয়া করে আপনার ক্লাউড এনভায়রনমেন্ট বা এডমিন প্যানেল ইনপুট ফাইলে URL এবং Anon Key যোগ করে সেভ বাটনে ক্লিক করুন।");
-      }
-
-      // ১. টেস্ট রিড কুয়েরি (SELECT TEST on avexon_orders)
-      setSupabaseOrdersTestMessage("ধাপ ১: 'avexon_orders' টেবিলের অস্তিত্ব ও অ্যাক্সেসিবিলিটি চেক করা হচ্ছে...");
-      const { data: readData, error: readError } = await supabaseOrders
+      // 4. টেস্ট রিড কুয়েরি (SELECT TEST on avexon_orders)
+      setSupabaseTestMessage("ধাপ ৪: অর্ডার ডাটাবেস 'avexon_orders' টেবিল রিডিং মডিউল টেস্ট করা হচ্ছে...");
+      const { data: ordReadData, error: ordReadError } = await supabase
         .from("avexon_orders")
         .select("id")
         .limit(1);
 
-      if (readError) {
-        throw new Error(`টেবিল রিড (SELECT) করতে ব্যর্থ হয়েছে। দয়া করে নিশ্চিত করুন যে আপনার SQL Editor-এ 'avexon_orders' টেবিলটি সফলভাবে তৈরি হয়েছে। Error: ${readError.message}`);
+      if (ordReadError) {
+        throw new Error(`অর্ডার টেবিল রিড (SELECT) টেস্ট করতে ব্যর্থ হয়েছে। দয়া করে নিশ্চিত করুন আপনার SQL স্ক্রিপ্টটি Supabase SQL Editor-এ রান করেছেন এবং 'avexon_orders' টেবিলটি সফলভাবে তৈরি হয়েছে। Error: ${ordReadError.message}`);
       }
 
-      // ২. টেস্ট রাইট/ডিলিট কুয়েরি (WRITE/DELETE CRUD TEST on avexon_orders)
-      setSupabaseOrdersTestMessage("ধাপ ২: অর্ডার টেবিলে পরীক্ষামূলক টেস্ট অর্ডার রাইট এবং রিয়েল-টাইম ব্রডকাস্টিং চেক করা হচ্ছে...");
-      const dummyId = `order_test_${Date.now()}`;
+      // 5. টেস্ট রাইট/ডিলিট কুয়েরি (WRITE/DELETE CURD TEST on avexon_orders)
+      setSupabaseTestMessage("ধাপ ৫: অর্ডার ডাটাবেসে রিয়েল-টাইম অর্ডার রাইট ও সিকিউরিটি চেক করা হচ্ছে...");
+      const dummyOrdId = `test_order_ping_${Date.now()}`;
       const dummyOrder = {
-        id: dummyId,
+        id: dummyOrdId,
         customerName: "টেস্ট ইউজার (Avexon Base Test)",
         phone: "01700000000",
         address: "ঢাকা, বাংলাদেশ",
@@ -791,38 +752,38 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
         testOrder: true
       };
 
-      const { error: insertError } = await supabaseOrders
+      const { error: ordInsertError } = await supabase
         .from("avexon_orders")
         .upsert({
-          id: dummyId,
+          id: dummyOrdId,
           value: dummyOrder
         });
 
-      if (insertError) {
-        if (insertError.message.includes("violates row-level security policy")) {
-          throw new Error(`অর্ডার রাইট (UPSERT) করতে ব্যর্থ হয়েছে! টেবিলে Row-Level Security (RLS) সক্রিয় আছে কিন্তু রাইট পলিসি অনুমোদিত নয়। দয়া করে ডান পাশের SQL স্ক্রিপ্ট অংশের পলিসি কোডটি রান করুন।`);
+      if (ordInsertError) {
+        if (ordInsertError.message.includes("violates row-level security policy")) {
+          throw new Error(`অর্ডার রাইট (UPSERT) টেস্ট করতে ব্যর্থ হয়েছে! আপনার Supabase টেবিলে Row-Level Security (RLS) সক্রিয় রয়েছে কিন্তু রাইট পলিসি অনুমোদিত নয়। নিচের SQL কোড অংশের পলিসি স্ক্রিপ্টটি অনুগ্রহ করে Supabase SQL Editor-এ রান করুন।`);
         }
-        throw new Error(`রাইট (UPSERT) করতে ব্যর্থ হয়েছে। RLS Rules বা পলিসি যোগ করা হয়েছে কি? Error: ${insertError.message}`);
+        throw new Error(`অর্ডার রাইট (UPSERT) টেস্ট করতে ব্যর্থ হয়েছে। RLS Rules বা পলিসি যোগ করা হয়েছে কি? Error: ${ordInsertError.message}`);
       }
 
-      // ৩. ডিলিট করা
-      setSupabaseOrdersTestMessage("ধাপ ৩: টেস্ট অর্ডার সফলভাবে সেভ হয়েছে। এখন ডাটাবেস ক্লিনআপ নিশ্চিত করা হচ্ছে...");
-      const { error: deleteError } = await supabaseOrders
+      // 6. অর্ডার ডিলিট করা
+      setSupabaseTestMessage("ধাপ ৬: অর্ডার টেস্ট ডাটা সাফ এবং সেশন ক্লোজ করা হচ্ছে...");
+      const { error: ordDeleteError } = await supabase
         .from("avexon_orders")
         .delete()
-        .eq("id", dummyId);
+        .eq("id", dummyOrdId);
 
-      if (deleteError) {
-        console.warn("টেস্ট অর্ডার ডাটা মুছতে ব্যর্থ হয়েছে, তবে রাইট কুয়েরি কাজ করেছে:", deleteError.message);
+      if (ordDeleteError) {
+        console.warn("অর্ডার টেস্ট ডাটা মুছতে ব্যর্থ হয়েছে, তবে রাইট কুয়েরি কাজ করেছে:", ordDeleteError.message);
       }
 
-      setSupabaseOrdersTestStatus("success");
-      setSupabaseOrdersTestMessage("অভিনন্দন! অর্ডার সুপাবেস ডাটাবেস সংযোগ এবং 'avexon_orders' টেবিল পুরোপুরি সচল। রিড, রাইট, এবং ডিলিট টেস্ট ১০০% সফল এবং অর্ডার সিস্টেম রিয়েল-টাইম কাজ করছে! 🚀");
-      triggerSuccessAlert("অর্ডার সুপাবেস কানেকশন পরীক্ষা সম্পন্ন হয়েছে!");
+      setSupabaseTestStatus("success");
+      setSupabaseTestMessage("অভিনন্দন! আপনার Supabase কানেকশন সম্পূর্ণ সচল রয়েছে। কনটেন্ট এবং অর্ডার টেবিলের রিড, রাইট, এবং ডিলিট টেস্ট ১০০% সফল। রিয়েল-টাইম লাইভ ব্রডকাস্টিং পুরোপুরি কার্যকর!");
+      triggerSuccessAlert("সুপাবেস পরীক্ষা সফল হয়েছে!");
     } catch (err: any) {
-      console.error("Supabase orders test error:", err);
-      setSupabaseOrdersTestStatus("error");
-      setSupabaseOrdersTestMessage(err.message || "অজানা ত্রুটি ঘটেছে। অর্ডার সুপাবেস কানেকশন ব্যর্থ হয়েছে।");
+      console.error("Supabase test error:", err);
+      setSupabaseTestStatus("error");
+      setSupabaseTestMessage(err.message || "অজানা ত্রুটি ঘটেছে। কানেকশন ব্যর্থ হয়েছে।");
     }
   };
 
@@ -1201,20 +1162,48 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
       }
     };
     
+    const normalizeSupabaseOrder = (record: any) => {
+      if (!record) return null;
+      // Case 1: record has a value property which is an object
+      if (record.value && typeof record.value === "object") {
+        return { ...record.value, id: record.value.id || record.id };
+      }
+      // Case 2: record has a value property which is a JSON string
+      if (record.value && typeof record.value === "string") {
+        try {
+          const parsed = JSON.parse(record.value);
+          if (parsed && typeof parsed === "object") {
+            return { ...parsed, id: parsed.id || record.id };
+          }
+        } catch (_) {}
+      }
+      // Case 3: Flat record with direct columns (e.g. customerName, price, status)
+      if (record.customerName || record.customerPhone || record.price || record.status) {
+        const clean = { ...record };
+        if (clean.value === null || clean.value === undefined) {
+          delete clean.value;
+        }
+        return clean;
+      }
+      return record;
+    };
+
     const checkNewOrders = async () => {
       try {
         const res = await fetch("/api/orders");
         const json = await res.json();
         if (json.success && Array.isArray(json.data)) {
-          const ordersList: Order[] = json.data;
+          const rawOrders: any[] = json.data;
+          const ordersList: Order[] = rawOrders.map(normalizeSupabaseOrder).filter(Boolean);
           const stored = safeLocalStorage.getItem("avexon_user_orders");
           let merged = ordersList;
           if (stored) {
             try {
               const parsed = JSON.parse(stored);
               if (Array.isArray(parsed)) {
+                const normalizedStored = parsed.map(normalizeSupabaseOrder).filter(Boolean);
                 const serverIds = new Set(ordersList.map(o => o.id));
-                const localOnly = parsed.filter(o => o && o.id && !serverIds.has(o.id));
+                const localOnly = normalizedStored.filter(o => o && o.id && !serverIds.has(o.id));
                 merged = [...ordersList, ...localOnly];
               }
             } catch (_) {}
@@ -1269,36 +1258,40 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
               }
             } else if (payload.eventType === "INSERT") {
               const newRecord = payload.new;
-              if (newRecord && newRecord.value) {
-                const newOrder = newRecord.value;
-                setAllOrders(prev => {
-                  const exists = prev.some(o => o.id === newOrder.id);
-                  if (exists) return prev;
-                  const updated = [newOrder, ...prev];
-                  safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(updated));
-                  lastOrderCount = updated.length;
-                  // Trigger direct immediate notification and chime without polling delay!
-                  triggerNewOrderFeedback(newOrder);
-                  return updated;
-                });
+              if (newRecord) {
+                const newOrder = normalizeSupabaseOrder(newRecord);
+                if (newOrder && newOrder.id) {
+                  setAllOrders(prev => {
+                    const exists = prev.some(o => o.id === newOrder.id);
+                    if (exists) return prev;
+                    const updated = [newOrder, ...prev];
+                    safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(updated));
+                    lastOrderCount = updated.length;
+                    // Trigger direct immediate notification and chime without polling delay!
+                    triggerNewOrderFeedback(newOrder);
+                    return updated;
+                  });
+                }
               }
             } else if (payload.eventType === "UPDATE") {
               const updatedRecord = payload.new;
-              if (updatedRecord && updatedRecord.value) {
-                const updatedOrder = updatedRecord.value;
-                setAllOrders(prev => {
-                  const index = prev.findIndex(o => o.id === updatedOrder.id);
-                  let updated;
-                  if (index !== -1) {
-                    updated = [...prev];
-                    updated[index] = updatedOrder;
-                  } else {
-                    updated = [updatedOrder, ...prev];
-                  }
-                  safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(updated));
-                  lastOrderCount = updated.length;
-                  return updated;
-                });
+              if (updatedRecord) {
+                const updatedOrder = normalizeSupabaseOrder(updatedRecord);
+                if (updatedOrder && updatedOrder.id) {
+                  setAllOrders(prev => {
+                    const index = prev.findIndex(o => o.id === updatedOrder.id);
+                    let updated;
+                    if (index !== -1) {
+                      updated = [...prev];
+                      updated[index] = updatedOrder;
+                    } else {
+                      updated = [updatedOrder, ...prev];
+                    }
+                    safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(updated));
+                    lastOrderCount = updated.length;
+                    return updated;
+                  });
+                }
               }
             }
           }
@@ -6124,66 +6117,34 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
                             {/* Manual Override Inputs */}
                             <div className="p-4 border border-purple-500/20 bg-purple-950/20 rounded-2xl space-y-3">
                               <span className="text-[12px] font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-300 block">
-                                🛠️ ব্রাউজার ভিত্তিক ম্যানুয়াল সংযোগ (হোস্টিং বা ডেক্সটপ এর জন্য অত্যন্ত সহজ)
+                                🛠️ ব্রাউজার ভিত্তিক ম্যানুয়াল সংযোগ (ওয়েবসাইট কন্টেন্ট ও লাইভ অর্ডার সিঙ্ক)
                               </span>
                               <p className="text-[10px] text-slate-400 leading-relaxed font-sans mt-0.5">
-                                যদি নেটলিফাইতে (Netlify) হোস্ট করার পর কোনো কারণে পরিবেশ ভেরিয়েবল (Environment Variable) লোড না হয়, অথবা আপনি অর্ডার ট্র্যাকিংয়ের জন্য সম্পূর্ণ ভিন্ন আরেকটি সুপাবেস অ্যাকাউন্ট/প্রজেক্ট ব্যবহার করতে চান, তাহলে নিচের ইনপুট বক্সে সরাসরি সুপাবেস ক্রেডেনশিয়াল লিখুন।
+                                যদি হোস্ট করার পর কোনো কারণে পরিবেশ ভেরিয়েবল (Environment Variable) লোড না হয়, তাহলে নিচের ইনপুট বক্সে সরাসরি আপনার সুপাবেস কানেকশন কি লিখুন। বর্তমানে এই একটি সিঙ্গেল সংযোগের মাধ্যমেই কন্টেন্ট এবং অর্ডার মডিউল উভয়ই চমৎকারভাবে সিঙ্ক হবে।
                               </p>
                               
                               <div className="space-y-3.5">
-                                {/* Section A: Content Database */}
-                                <div className="border border-purple-500/10 p-3 rounded-xl bg-purple-950/10 space-y-2">
-                                  <span className="text-[10px] font-bold text-purple-300 block uppercase tracking-wider font-sans">সেকশন ক: কন্টেন্ট ম্যানেজমেন্ট সুপাবেস সংযোগ (ওয়েবসাইটের কন্টেন্ট সিংক)</span>
-                                  <div className="space-y-2">
-                                    <div className="space-y-1">
-                                      <label className="text-[9px] font-bold text-slate-400 block font-sans">সুপাবেস URL (VITE_SUPABASE_URL)</label>
-                                      <input
-                                        type="text"
-                                        value={manualSupabaseUrl}
-                                        onChange={(e) => setManualSupabaseUrl(e.target.value)}
-                                        placeholder="https://yourprojectid.supabase.co"
-                                        className="w-full bg-[#110a24] text-[11px] text-white border border-purple-500/20 rounded-xl px-3 py-2 focus:outline-none focus:border-purple-400 font-sans"
-                                      />
-                                    </div>
-
-                                    <div className="space-y-1">
-                                      <label className="text-[9px] font-bold text-slate-400 block font-sans">আনন পাবলিক কি (VITE_SUPABASE_ANON_KEY)</label>
-                                      <input
-                                        type="text"
-                                        value={manualSupabaseKey}
-                                        onChange={(e) => setManualSupabaseKey(e.target.value)}
-                                        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                                        className="w-full bg-[#110a24] text-[11px] text-white border border-purple-500/20 rounded-xl px-3 py-2 focus:outline-none focus:border-purple-400 font-mono"
-                                      />
-                                    </div>
+                                <div className="space-y-3">
+                                  <div className="space-y-1">
+                                    <label className="text-[9px] font-bold text-slate-400 block font-sans">সুপাবেস URL (VITE_SUPABASE_URL)</label>
+                                    <input
+                                      type="text"
+                                      value={manualSupabaseUrl}
+                                      onChange={(e) => setManualSupabaseUrl(e.target.value)}
+                                      placeholder="https://yourprojectid.supabase.co"
+                                      className="w-full bg-[#110a24] text-[11px] text-white border border-purple-500/20 rounded-xl px-3 py-2 focus:outline-none focus:border-purple-400 font-sans"
+                                    />
                                   </div>
-                                </div>
 
-                                {/* Section B: Dedicated Orders Database */}
-                                <div className="border border-emerald-500/10 p-3 rounded-xl bg-emerald-950/5 space-y-2">
-                                  <span className="text-[10px] font-bold text-emerald-300 block uppercase tracking-wider font-sans">সেকশন খ: ডেডিকেটেড গ্রাহক অর্ডার সুপাবেস সংযোগ (গ্রাহকদের অর্ডার স্টোরেজ/ডাটাবেজ সংযোগ)</span>
-                                  <div className="space-y-2">
-                                    <div className="space-y-1">
-                                      <label className="text-[9px] font-bold text-slate-400 block font-sans">সুপাবেস URL (VITE_SUPABASE_URL_ORDERS)</label>
-                                      <input
-                                        type="text"
-                                        value={manualSupabaseUrlOrders}
-                                        onChange={(e) => setManualSupabaseUrlOrders(e.target.value)}
-                                        placeholder="https://yourprojectid-orders.supabase.co"
-                                        className="w-full bg-[#0a1120] text-[11px] text-white border border-emerald-500/20 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-400 font-sans"
-                                      />
-                                    </div>
-
-                                    <div className="space-y-1">
-                                      <label className="text-[9px] font-bold text-slate-400 block font-sans">আনন পাবলিক কি (VITE_SUPABASE_ANON_KEY_ORDERS)</label>
-                                      <input
-                                        type="text"
-                                        value={manualSupabaseKeyOrders}
-                                        onChange={(e) => setManualSupabaseKeyOrders(e.target.value)}
-                                        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                                        className="w-full bg-[#0a1120] text-[11px] text-white border border-emerald-500/20 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-400 font-mono"
-                                      />
-                                    </div>
+                                  <div className="space-y-1">
+                                    <label className="text-[9px] font-bold text-slate-400 block font-sans">আনন পাবলিক কি (VITE_SUPABASE_ANON_KEY)</label>
+                                    <input
+                                      type="text"
+                                      value={manualSupabaseKey}
+                                      onChange={(e) => setManualSupabaseKey(e.target.value)}
+                                      placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                                      className="w-full bg-[#110a24] text-[11px] text-white border border-purple-500/20 rounded-xl px-3 py-2 focus:outline-none focus:border-purple-400 font-mono"
+                                    />
                                   </div>
                                 </div>
                               </div>
@@ -6197,7 +6158,7 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
                                   সংরক্ষণ ও কানেক্ট করুন
                                 </button>
                                 
-                                {(safeLocalStorage.getItem("VITE_SUPABASE_URL") || safeLocalStorage.getItem("VITE_SUPABASE_ANON_KEY") || safeLocalStorage.getItem("VITE_SUPABASE_URL_ORDERS") || safeLocalStorage.getItem("VITE_SUPABASE_ANON_KEY_ORDERS")) && (
+                                {(safeLocalStorage.getItem("VITE_SUPABASE_URL") || safeLocalStorage.getItem("VITE_SUPABASE_ANON_KEY")) && (
                                   <button
                                     type="button"
                                     onClick={handleResetManualSupabase}
@@ -6398,13 +6359,13 @@ create policy "Allow public delete" on public.avexon_orders for delete using (tr
                         </p>
                       </div>
 
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2">
-                        {/* Box 1: Content DB */}
-                        <div className="p-4 rounded-xl border border-purple-500/10 bg-[#120822] space-y-4">
+                      <div className="grid grid-cols-1 gap-5 pt-2">
+                        {/* Unified DB Check */}
+                        <div className="p-4 rounded-xl border border-purple-500/15 bg-[#120822] space-y-4">
                           <div className="space-y-1 font-sans">
-                            <span className="text-[11px] font-extrabold text-purple-300 block">১. কন্টেন্ট ম্যানেজমেন্ট সুপাবেস টেস্ট</span>
+                            <span className="text-[11px] font-extrabold text-purple-300 block">সুপাবেস ডাটাবেস এবং রিয়েল-টাইম কানেক্টিভিটি টেস্ট</span>
                             <p className="text-[10px] text-slate-400 leading-relaxed">
-                              'avexon_content' টেবিলে রিড, নতুন কন্টেন্ট আপলোড এবং ডিলিট করার ক্ষমতা যাচাই করতে।
+                              বর্তমানে 'avexon_content' এবং 'avexon_orders' উভয় টেবিলেই রিড, রাইট, এবং ডিলিট ক্ষমতার সিঙ্ক লাইভ কোয়েরি রান করে পরীক্ষা করবে।
                             </p>
                           </div>
                           
@@ -6417,12 +6378,12 @@ create policy "Allow public delete" on public.avexon_orders for delete using (tr
                             {supabaseTestStatus === "testing" ? (
                               <>
                                 <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                                <span>কানেকশন চেক করা হচ্ছে...</span>
+                                <span>কানেকশন ও টেবিলসমূহ চেক করা হচ্ছে...</span>
                               </>
                             ) : (
                               <>
                                 <CheckCircle className="w-3.5 h-3.5" />
-                                <span>টেস্ট কন্টেন্ট ডাটাবেস (Check Content)</span>
+                                <span>সুপাবেস সংযোগ ডায়াগনস্টিক চেক (Diagnostic Check)</span>
                               </>
                             )}
                           </button>
@@ -6436,47 +6397,6 @@ create policy "Allow public delete" on public.avexon_orders for delete using (tr
                                 : "bg-[#250d18] border-rose-500/25 text-rose-200"
                             } font-sans space-y-1`}>
                               <div className="font-semibold break-words">{supabaseTestMessage}</div>
-                            </div>
-                          )}
-                        </div>
-
-                        {/* Box 2: Orders DB */}
-                        <div className="p-4 rounded-xl border border-emerald-500/15 bg-[#081216] space-y-4">
-                          <div className="space-y-1 font-sans">
-                            <span className="text-[11px] font-extrabold text-emerald-300 block">২. ডেডিকেটেড গ্রাহক অর্ডার সুপাবেস টেস্ট</span>
-                            <p className="text-[10px] text-slate-400 leading-relaxed">
-                              'avexon_orders' টেবিলে গ্রাহকের নতুন অর্ডার সেভ, রিড ও এডমিন আপডেট ক্ষমতা যাচাই করতে।
-                            </p>
-                          </div>
-                          
-                          <button
-                            type="button"
-                            onClick={handleTestSupabaseOrders}
-                            disabled={supabaseOrdersTestStatus === "testing"}
-                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-slate-800 disabled:to-slate-800 disabled:opacity-50 text-white font-extrabold text-[10px] rounded-lg cursor-pointer transition-all active:scale-95 shadow-md font-sans"
-                          >
-                            {supabaseOrdersTestStatus === "testing" ? (
-                              <>
-                                <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
-                                <span>টেবিল ও অর্ডার চেক করা হচ্ছে...</span>
-                              </>
-                            ) : (
-                              <>
-                                <CheckCircle className="w-3.5 h-3.5" />
-                                <span>টেস্ট অর্ডার ডাটাবেস (Check Orders)</span>
-                              </>
-                            )}
-                          </button>
-
-                          {supabaseOrdersTestStatus !== "idle" && (
-                            <div className={`p-3 rounded-lg border text-[11px] ${
-                              supabaseOrdersTestStatus === "testing" 
-                                ? "bg-[#101530] border-blue-500/25 text-blue-200"
-                                : supabaseOrdersTestStatus === "success"
-                                ? "bg-[#0b1f14] border-emerald-500/25 text-emerald-200"
-                                : "bg-[#250d18] border-rose-500/25 text-rose-200"
-                            } font-sans space-y-1`}>
-                              <div className="font-semibold break-words">{supabaseOrdersTestMessage}</div>
                             </div>
                           )}
                         </div>
