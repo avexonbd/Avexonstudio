@@ -10,6 +10,7 @@ dotenv.config();
 
 const app = express();
 const PORT = 3000;
+const SERVER_START_TIME = new Date();
 
 // Enable large JSON body parsing to support passing the full current state
 app.use(express.json({ limit: "25mb" }));
@@ -309,6 +310,82 @@ ${JSON.stringify(currentState, null, 2)}
       success: false,
       error: userMessage,
     });
+  }
+});
+
+// API to get real-time server deployment/boot configuration details
+app.get("/api/deploy-info", (req, res) => {
+  try {
+    const bdtOffset = 6 * 60 * 60 * 1000; // Bangladesh is UTC+6
+    const bdtDate = new Date(SERVER_START_TIME.getTime() + bdtOffset);
+    
+    // Manual robust formatting to prevent regional platform dependency mismatches
+    const hour24 = bdtDate.getUTCHours();
+    const period = hour24 >= 12 ? "বিকাল" : "সকাল";
+    const hour12 = hour24 % 12 || 12;
+    const minutes = String(bdtDate.getUTCMinutes()).padStart(2, "0");
+    const seconds = String(bdtDate.getUTCSeconds()).padStart(2, "0");
+    
+    const day = bdtDate.getUTCDate();
+    const monthIndex = bdtDate.getUTCMonth();
+    const year = bdtDate.getUTCFullYear();
+    
+    const banglaMonths = [
+      "জানুয়ারি", "ফেব্রুয়ারি", "মার্চ", "এপ্রিল", "মে", "জুন",
+      "জুলাই", "আগস্ট", "সেপ্টেম্বর", "অক্টোবর", "নভেম্বর", "ডিসেম্বর"
+    ];
+    
+    const englishMonths = [
+      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    ];
+    
+    // Conversion helper for numbers to Bangla numerals
+    const bnNums = ["০","১","২","৩","৪","৫","৬","৭","৮","৯"];
+    const toBnNum = (num: number | string): string => {
+      return String(num).split("").map(char => {
+        const parsed = parseInt(char, 10);
+        return isNaN(parsed) ? char : bnNums[parsed];
+      }).join("");
+    };
+
+    const bootTimeBN = `${period} ${toBnNum(hour12)}:${toBnNum(minutes)}`;
+    const bootDateBN = `${toBnNum(day)} ${banglaMonths[monthIndex]}, ${toBnNum(year)}`;
+    
+    const hour12EN = hour24 % 12 || 12;
+    const periodEN = hour24 >= 12 ? "PM" : "AM";
+    const bootTimeEN = `${englishMonths[monthIndex]} ${day}, ${year}, ${hour12EN}:${minutes} ${periodEN}`;
+
+    const uptimeSeconds = Math.floor((Date.now() - SERVER_START_TIME.getTime()) / 1000);
+
+    // Also get active file modification stamp of dist/server.cjs or server.ts if compiled
+    let fsModifiedBN = "";
+    try {
+      const serverFile = path.join(process.cwd(), "server.ts");
+      if (fs.existsSync(serverFile)) {
+        const stat = fs.statSync(serverFile);
+        const mDate = new Date(stat.mtime.getTime() + bdtOffset);
+        const mHour24 = mDate.getUTCHours();
+        const mPeriod = mHour24 >= 12 ? "বিকাল" : "সকাল";
+        const mHour12 = mHour24 % 12 || 12;
+        const mMinutes = String(mDate.getUTCMinutes()).padStart(2, "0");
+        const mDay = mDate.getUTCDate();
+        const mMonth = banglaMonths[mDate.getUTCMonth()];
+        fsModifiedBN = `${toBnNum(mDay)} ${mMonth}, ${mPeriod} ${toBnNum(mHour12)}:${toBnNum(mMinutes)}`;
+      }
+    } catch (_) {}
+
+    res.json({
+      success: true,
+      bootTime: SERVER_START_TIME.toISOString(),
+      bootTimeBN,
+      bootDateBN,
+      bootTimeEN,
+      fsModifiedBN,
+      uptimeSeconds
+    });
+  } catch (err: any) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

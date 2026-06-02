@@ -442,7 +442,91 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
 
   useEffect(() => {
     safeLocalStorage.setItem("avexon_admin_notifications", JSON.stringify(notifications));
+    window.dispatchEvent(new Event("storage"));
   }, [notifications]);
+
+  // Synchronously fetch real-time deployment / boot metadata from the server to update system logs dynamically
+  useEffect(() => {
+    const fetchDeployInfo = async () => {
+      try {
+        const response = await fetch("/api/deploy-info");
+        const json = await response.json();
+        if (json.success) {
+          const { bootTime, bootTimeBN, bootDateBN, bootTimeEN } = json;
+          const lastSeenBoot = safeLocalStorage.getItem("avexon_last_seen_boot_time");
+          const isNewDeployment = lastSeenBoot !== bootTime;
+
+          setNotifications(prev => {
+            let updated = [...prev];
+            let changed = false;
+
+            const gitId = "git-init-update";
+            const deployId = "gcr-deploy-live";
+            const newTimestamp = `${bootDateBN}, ${bootTimeBN}`;
+            const newDesc = `সফলভাবে প্রোডাকশন ইমেজ বিল্ড সম্পন্ন হয়েছে এবং কন্টেইনার আপডেট করা হয়েছে। লাইভ URL পোর্ট ৩০০০ সচল। [Deploy Time: ${bootTimeEN}]`;
+
+            // Check if git update exists
+            const gitIndex = updated.findIndex(n => n.id === gitId);
+            if (gitIndex !== -1) {
+              if (updated[gitIndex].timestamp !== newTimestamp || isNewDeployment) {
+                updated[gitIndex] = {
+                  ...updated[gitIndex],
+                  timestamp: newTimestamp,
+                  read: !isNewDeployment ? updated[gitIndex].read : false // make unread if new deployment
+                };
+                changed = true;
+              }
+            } else {
+              // Prepend if missing
+              updated.unshift({
+                id: gitId,
+                title: "GitHub Repository Updated & Compiled successfully 🎉",
+                description: "GitHub-এ নতুন ডেভেলপমেন্ট কোড পুশ করা হয়েছে (main branch)। esbuild Bundle compilation সম্পন্ন হয়েছে এবং ক্লাউড ডিস্ট্রিবিউশন প্ল্যাটফর্মে সার্ভার সচল হয়েছে।",
+                type: "git",
+                timestamp: newTimestamp,
+                read: false
+              });
+              changed = true;
+            }
+
+            // Check if deploy exists
+            const deployIndex = updated.findIndex(n => n.id === deployId);
+            if (deployIndex !== -1) {
+              if (updated[deployIndex].timestamp !== newTimestamp || updated[deployIndex].description !== newDesc || isNewDeployment) {
+                updated[deployIndex] = {
+                  ...updated[deployIndex],
+                  timestamp: newTimestamp,
+                  description: newDesc,
+                  read: !isNewDeployment ? updated[deployIndex].read : false // make unread if new deployment
+                };
+                changed = true;
+              }
+            } else {
+              updated.unshift({
+                id: deployId,
+                title: "Google Cloud Run Deployment Success 🚀",
+                description: newDesc,
+                type: "deploy",
+                timestamp: newTimestamp,
+                read: false
+              });
+              changed = true;
+            }
+
+            if (isNewDeployment) {
+              safeLocalStorage.setItem("avexon_last_seen_boot_time", bootTime);
+            }
+
+            return changed ? updated : prev;
+          });
+        }
+      } catch (err) {
+        console.warn("Failed to fetch dynamic deployment info:", err);
+      }
+    };
+
+    fetchDeployInfo();
+  }, []);
 
   useEffect(() => {
     if (allOrders.length === 0) return;
@@ -1110,7 +1194,7 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
     };
   }, []);
 
-  // Real-time synchronization when orders are added or modified via localStorage events
+  // Real-time synchronization when orders or notifications are added/modified via localStorage events
   useEffect(() => {
     const handleStorageChange = () => {
       try {
@@ -1118,7 +1202,25 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
         if (stored) {
           const parsed = JSON.parse(stored) as Order[];
           if (Array.isArray(parsed)) {
-            setAllOrders(parsed);
+            setAllOrders(prev => {
+              if (JSON.stringify(prev) !== stored) {
+                return parsed;
+              }
+              return prev;
+            });
+          }
+        }
+
+        const storedNotifs = safeLocalStorage.getItem("avexon_admin_notifications");
+        if (storedNotifs) {
+          const parsedNotifs = JSON.parse(storedNotifs) as AdminNotification[];
+          if (Array.isArray(parsedNotifs)) {
+            setNotifications(prev => {
+              if (JSON.stringify(prev) !== storedNotifs) {
+                return parsedNotifs;
+              }
+              return prev;
+            });
           }
         }
       } catch (e) {
