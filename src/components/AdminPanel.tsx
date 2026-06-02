@@ -21,6 +21,7 @@ import {
   Shield,
   Loader2,
   Activity,
+  RefreshCw,
   ListFilter,
   Megaphone,
   Flame,
@@ -1057,6 +1058,17 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
         safeSessionStorage.setItem("avexon_admin_authenticated", "true");
         safeLocalStorage.setItem("avexon_admin_authenticated_persist", "true");
         setPasscode("");
+        
+        // Fetch fresh orders instantly from the server upon successful login
+        fetch("/api/orders")
+          .then(res => res.json())
+          .then(json => {
+            if (json.success && json.data) {
+              setAllOrders(json.data);
+              safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(json.data));
+            }
+          })
+          .catch(err => console.warn("Failed to fetch fresh orders on login: ", err));
       } else {
         setAuthError(val.error || "ভুল পাসকোড! অনুগ্রহ করে সঠিক পাসকোড দিন।");
       }
@@ -1067,6 +1079,17 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
         safeSessionStorage.setItem("avexon_admin_authenticated", "true");
         safeLocalStorage.setItem("avexon_admin_authenticated_persist", "true");
         setPasscode("");
+        
+        // Fetch fresh orders instantly from the server upon successful login fallback
+        fetch("/api/orders")
+          .then(res => res.json())
+          .then(json => {
+            if (json.success && json.data) {
+              setAllOrders(json.data);
+              safeLocalStorage.setItem("avexon_user_orders", JSON.stringify(json.data));
+            }
+          })
+          .catch(err => console.warn("Failed to fetch fresh orders on fallback login: ", err));
       } else {
         setAuthError("ভুল পাসকোড বা সার্ভার সংযোগ ত্রুটি! অনুগ্রহ করে আবার চেষ্টা করুন।");
       }
@@ -4078,10 +4101,11 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
                           <button
                             onClick={handleManualSyncCheck}
                             disabled={isCheckingSync}
-                            className="flex items-center gap-2 cursor-pointer bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-semibold px-4 py-2 rounded-xl border border-purple-500/20 active:scale-95 transition-all shadow-[0_0_15px_rgba(139,92,246,0.15)] disabled:opacity-50"
+                            className="flex items-center gap-2 cursor-pointer bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-500 hover:from-emerald-500 hover:via-teal-500 hover:to-emerald-400 text-white text-xs font-bold px-4 py-2.5 rounded-xl border border-emerald-400/20 active:scale-95 transition-all shadow-[0_0_20px_rgba(16,185,129,0.2)] disabled:opacity-50"
+                            title="রিলোড ছাড়া সরাসরি নতুন সকল অর্ডার চেক ও রিফ্রেশ করুন"
                           >
-                            <Activity className={`w-3.5 h-3.5 ${isCheckingSync ? 'animate-spin' : ''}`} />
-                            <span>ম্যানুয়াল রিফ্রেশ করুন</span>
+                            <RefreshCw className={`w-4 h-4 ${isCheckingSync ? 'animate-spin' : ''}`} />
+                            <span>নতুন অর্ডার লোড ও রিফ্রেশ</span>
                           </button>
                         </div>
                       </div>
