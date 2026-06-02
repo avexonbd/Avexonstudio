@@ -32,23 +32,53 @@ if (typeof window !== "undefined") {
   try {
     const originalFetch = window.fetch;
     if (originalFetch) {
+      let absoluteBaseUrl = "";
+      
+      // Try resolving absolute base from window location
+      try {
+        const origin = window.location.origin;
+        if (origin && origin !== "null" && origin.startsWith("http")) {
+          absoluteBaseUrl = origin;
+        }
+      } catch (_) {}
+
+      // Fallback 1: Resolve from window location href
+      if (!absoluteBaseUrl) {
+        try {
+          const href = window.location.href;
+          if (href && href.startsWith("http")) {
+            const match = href.match(/^(https?:\/\/[^\/]+)/);
+            if (match) absoluteBaseUrl = match[1];
+          }
+        } catch (_) {}
+      }
+
+      // Fallback 2: Resolve from import.meta.url (Vite bundle origin - extremely resilient inside sandboxed frames!)
+      if (!absoluteBaseUrl) {
+        try {
+          const metaUrl = import.meta.url;
+          if (metaUrl && metaUrl.startsWith("http")) {
+            const match = metaUrl.match(/^(https?:\/\/[^\/]+)/);
+            if (match) absoluteBaseUrl = match[1];
+          }
+        } catch (_) {}
+      }
+
+      // Fallback 3: Resolve from document.referrer
+      if (!absoluteBaseUrl) {
+        try {
+          const referrer = document.referrer;
+          if (referrer && referrer.startsWith("http")) {
+            const match = referrer.match(/^(https?:\/\/[^\/]+)/);
+            if (match) absoluteBaseUrl = match[1];
+          }
+        } catch (_) {}
+      }
+
       const customFetch = function (input: RequestInfo | URL, init?: RequestInit) {
-        if (typeof input === "string" && input.startsWith("/api/")) {
-          try {
-            const origin = window.location.origin;
-            if (origin && origin !== "null" && origin.startsWith("http")) {
-              input = origin + input;
-            } else {
-              const href = window.location.href;
-              if (href && href.startsWith("http")) {
-                const match = href.match(/^(https?:\/\/[^\/]+)/);
-                if (match) {
-                  input = match[1] + input;
-                }
-              }
-            }
-          } catch (e) {
-            console.warn("Failed to resolve absolute URL for fetch:", e);
+        if (typeof input === "string" && input.startsWith("/") && !input.startsWith("//")) {
+          if (absoluteBaseUrl) {
+            input = absoluteBaseUrl + input;
           }
         }
         // Call standard fetch explicitly with window context to avoid raw 'illegal invocation' browser errors
