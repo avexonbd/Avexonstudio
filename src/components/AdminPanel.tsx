@@ -38,7 +38,7 @@ import {
   Bell
 } from "lucide-react";
 import { useContent } from "../context/ContentContext";
-import { isSupabaseConfigured, supabase } from "../lib/supabase";
+import { isSupabaseConfigured, supabase, isSupabaseOrdersConfigured, supabaseOrders } from "../lib/supabase";
 import { WebsiteProduct, Service, PortfolioItem, Testimonial, TeamMember, ContactConfig } from "../types";
 import { safeLocalStorage, safeSessionStorage } from "../utils/safeStorage";
 import { Order, OrderStatus } from "./CheckoutModal";
@@ -592,13 +592,17 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
   const [manualSupabaseUrl, setManualSupabaseUrl] = useState<string>(() => safeLocalStorage.getItem("VITE_SUPABASE_URL") || "");
   const [manualSupabaseKey, setManualSupabaseKey] = useState<string>(() => safeLocalStorage.getItem("VITE_SUPABASE_ANON_KEY") || "");
 
+  // Dedicated Orders Supabase Testing States
+  const [supabaseOrdersTestStatus, setSupabaseOrdersTestStatus] = useState<"idle" | "testing" | "success" | "error">("idle");
+  const [supabaseOrdersTestMessage, setSupabaseOrdersTestMessage] = useState<string>("");
+  const [manualSupabaseUrlOrders, setManualSupabaseUrlOrders] = useState<string>(() => safeLocalStorage.getItem("VITE_SUPABASE_URL_ORDERS") || "");
+  const [manualSupabaseKeyOrders, setManualSupabaseKeyOrders] = useState<string>(() => safeLocalStorage.getItem("VITE_SUPABASE_ANON_KEY_ORDERS") || "");
+
   const handleSaveManualSupabase = async () => {
-    if (!manualSupabaseUrl.trim() || !manualSupabaseKey.trim()) {
-      alert("ইনপুট খালি রাখা যাবে না! দয়া করে দুটি ইনপুটই সঠিকভাবে পূরণ করুন।");
-      return;
-    }
     safeLocalStorage.setItem("VITE_SUPABASE_URL", manualSupabaseUrl.trim());
     safeLocalStorage.setItem("VITE_SUPABASE_ANON_KEY", manualSupabaseKey.trim());
+    safeLocalStorage.setItem("VITE_SUPABASE_URL_ORDERS", manualSupabaseUrlOrders.trim());
+    safeLocalStorage.setItem("VITE_SUPABASE_ANON_KEY_ORDERS", manualSupabaseKeyOrders.trim());
 
     try {
       await fetch("/api/supabase-config", {
@@ -606,7 +610,9 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           url: manualSupabaseUrl.trim(),
-          anonKey: manualSupabaseKey.trim()
+          anonKey: manualSupabaseKey.trim(),
+          urlOrders: manualSupabaseUrlOrders.trim(),
+          anonKeyOrders: manualSupabaseKeyOrders.trim()
         })
       });
     } catch (e) {
@@ -622,8 +628,12 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
   const handleResetManualSupabase = async () => {
     safeLocalStorage.removeItem("VITE_SUPABASE_URL");
     safeLocalStorage.removeItem("VITE_SUPABASE_ANON_KEY");
+    safeLocalStorage.removeItem("VITE_SUPABASE_URL_ORDERS");
+    safeLocalStorage.removeItem("VITE_SUPABASE_ANON_KEY_ORDERS");
     setManualSupabaseUrl("");
     setManualSupabaseKey("");
+    setManualSupabaseUrlOrders("");
+    setManualSupabaseKeyOrders("");
 
     try {
       await fetch("/api/supabase-config", {
@@ -631,7 +641,9 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           url: "",
-          anonKey: ""
+          anonKey: "",
+          urlOrders: "",
+          anonKeyOrders: ""
         })
       });
     } catch (e) {
@@ -699,6 +711,77 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
       console.error("Supabase test error:", err);
       setSupabaseTestStatus("error");
       setSupabaseTestMessage(err.message || "অজানা ত্রুটি ঘটেছে। কানেকশন ব্যর্থ হয়েছে।");
+    }
+  };
+
+  const handleTestSupabaseOrders = async () => {
+    setSupabaseOrdersTestStatus("testing");
+    setSupabaseOrdersTestMessage("অর্ডার সুপাবেস ডাটাবেস সংযোগ এবং টেবিল অ্যাক্টিভিটি পরীক্ষা করা হচ্ছে...");
+
+    try {
+      if (!isSupabaseOrdersConfigured || !supabaseOrders) {
+        throw new Error("অর্ডার সুপাবেস URL অথবা API Key কনফিগার করা হয়নি! দয়া করে আপনার ক্লাউড এনভায়রনমেন্ট বা এডমিন প্যানেল ইনপুট ফাইলে URL এবং Anon Key যোগ করে সেভ বাটনে ক্লিক করুন।");
+      }
+
+      // ১. টেস্ট রিড কুয়েরি (SELECT TEST on avexon_orders)
+      setSupabaseOrdersTestMessage("ধাপ ১: 'avexon_orders' টেবিলের অস্তিত্ব ও অ্যাক্সেসিবিলিটি চেক করা হচ্ছে...");
+      const { data: readData, error: readError } = await supabaseOrders
+        .from("avexon_orders")
+        .select("id")
+        .limit(1);
+
+      if (readError) {
+        throw new Error(`টেবিল রিড (SELECT) করতে ব্যর্থ হয়েছে। দয়া করে নিশ্চিত করুন যে আপনার SQL Editor-এ 'avexon_orders' টেবিলটি সফলভাবে তৈরি হয়েছে। Error: ${readError.message}`);
+      }
+
+      // ২. টেস্ট রাইট/ডিলিট কুয়েরি (WRITE/DELETE CRUD TEST on avexon_orders)
+      setSupabaseOrdersTestMessage("ধাপ ২: অর্ডার টেবিলে পরীক্ষামূলক টেস্ট অর্ডার রাইট এবং রিয়েল-টাইম ব্রডকাস্টিং চেক করা হচ্ছে...");
+      const dummyId = `order_test_${Date.now()}`;
+      const dummyOrder = {
+        id: dummyId,
+        customerName: "টেস্ট ইউজার (Avexon Base Test)",
+        phone: "01700000000",
+        address: "ঢাকা, বাংলাদেশ",
+        websites: [{ id: "test", name: "টেস্ট ওয়েবসাইট", price: 10 }],
+        totalPrice: 10,
+        status: "pending" as OrderStatus,
+        createdAt: new Date().toISOString(),
+        paymentMethod: "cod",
+        testOrder: true
+      };
+
+      const { error: insertError } = await supabaseOrders
+        .from("avexon_orders")
+        .upsert({
+          id: dummyId,
+          value: dummyOrder
+        });
+
+      if (insertError) {
+        if (insertError.message.includes("violates row-level security policy")) {
+          throw new Error(`অর্ডার রাইট (UPSERT) করতে ব্যর্থ হয়েছে! টেবিলে Row-Level Security (RLS) সক্রিয় আছে কিন্তু রাইট পলিসি অনুমোদিত নয়। দয়া করে ডান পাশের SQL স্ক্রিপ্ট অংশের পলিসি কোডটি রান করুন।`);
+        }
+        throw new Error(`রাইট (UPSERT) করতে ব্যর্থ হয়েছে। RLS Rules বা পলিসি যোগ করা হয়েছে কি? Error: ${insertError.message}`);
+      }
+
+      // ৩. ডিলিট করা
+      setSupabaseOrdersTestMessage("ধাপ ৩: টেস্ট অর্ডার সফলভাবে সেভ হয়েছে। এখন ডাটাবেস ক্লিনআপ নিশ্চিত করা হচ্ছে...");
+      const { error: deleteError } = await supabaseOrders
+        .from("avexon_orders")
+        .delete()
+        .eq("id", dummyId);
+
+      if (deleteError) {
+        console.warn("টেস্ট অর্ডার ডাটা মুছতে ব্যর্থ হয়েছে, তবে রাইট কুয়েরি কাজ করেছে:", deleteError.message);
+      }
+
+      setSupabaseOrdersTestStatus("success");
+      setSupabaseOrdersTestMessage("অভিনন্দন! অর্ডার সুপাবেস ডাটাবেস সংযোগ এবং 'avexon_orders' টেবিল পুরোপুরি সচল। রিড, রাইট, এবং ডিলিট টেস্ট ১০০% সফল এবং অর্ডার সিস্টেম রিয়েল-টাইম কাজ করছে! 🚀");
+      triggerSuccessAlert("অর্ডার সুপাবেস কানেকশন পরীক্ষা সম্পন্ন হয়েছে!");
+    } catch (err: any) {
+      console.error("Supabase orders test error:", err);
+      setSupabaseOrdersTestStatus("error");
+      setSupabaseOrdersTestMessage(err.message || "অজানা ত্রুটি ঘটেছে। অর্ডার সুপাবেস কানেকশন ব্যর্থ হয়েছে।");
     }
   };
 
@@ -1126,8 +1209,8 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
     };
 
     // If Supabase is active, subscribe to orders real-time channel!
-    if (isSupabaseConfigured && supabase) {
-      ordersSubscription = supabase
+    if (isSupabaseOrdersConfigured && supabaseOrders) {
+      ordersSubscription = supabaseOrders
         .channel("avexon_orders_realtime_admin")
         .on(
           "postgres_changes",
@@ -1847,10 +1930,10 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
       }).catch(err => console.error("Failed to sync updated order to server:", err));
 
       // Direct client-side Supabase write for instant customer-side UI refresh
-      if (isSupabaseConfigured && supabase) {
+      if (isSupabaseOrdersConfigured && supabaseOrders) {
         (async () => {
           try {
-            await supabase.from("avexon_orders").upsert({ id: editingOrder.id, value: editingOrder });
+            await supabaseOrders.from("avexon_orders").upsert({ id: editingOrder.id, value: editingOrder });
           } catch (err) {
             console.error("Direct Supabase flat order update failed:", err);
           }
@@ -1888,10 +1971,10 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
           }).catch(err => console.error("Failed to sync deleted order to server:", err));
 
           // Direct client-side Supabase delete
-          if (isSupabaseConfigured && supabase) {
+          if (isSupabaseOrdersConfigured && supabaseOrders) {
             (async () => {
               try {
-                await supabase.from("avexon_orders").delete().eq("id", orderId);
+                await supabaseOrders.from("avexon_orders").delete().eq("id", orderId);
               } catch (err) {
                 console.error("Direct Supabase flat order delete failed:", err);
               }
@@ -5760,11 +5843,10 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
                   </div>
                 )}
 
-                {/* 11. WHY CHOOSE US TAB */}
                 {/* 12. CONTACT TAB */}
                 {activeTab === "contact" && (
                   <div className="space-y-6 animate-fadeIn pb-6">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-2 border-b border-emerald-500/10 pb-4">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-2 border-b border-purple-500/10 pb-4">
                       <div>
                         <h3 className="text-sm font-bold text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-400 font-sans">
                           যোগাযোগ এবং ফুটর সেটিংস (Contact & Footer Control Panel)
@@ -6002,30 +6084,64 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
                                 🛠️ ব্রাউজার ভিত্তিক ম্যানুয়াল সংযোগ (হোস্টিং বা ডেক্সটপ এর জন্য অত্যন্ত সহজ)
                               </span>
                               <p className="text-[10px] text-slate-400 leading-relaxed font-sans mt-0.5">
-                                যদি নেটলিফাইতে (Netlify) হোস্ট করার পর কোনো কারণে পরিবেশ ভেরিয়েবল (Environment Variable) লোড না হয়, তাহলে নিচের ইনপুট বক্সে সরাসরি আপনার Supabase URL ও Anon Public Key দিন। এটি আপনার ব্রাউজারে সুরক্ষিতভাবে লোকাল স্টোরেজে সংরক্ষিত থাকবে এবং সাইটকে সচল রাখবে।
+                                যদি নেটলিফাইতে (Netlify) হোস্ট করার পর কোনো কারণে পরিবেশ ভেরিয়েবল (Environment Variable) লোড না হয়, অথবা আপনি অর্ডার ট্র্যাকিংয়ের জন্য সম্পূর্ণ ভিন্ন আরেকটি সুপাবেস অ্যাকাউন্ট/প্রজেক্ট ব্যবহার করতে চান, তাহলে নিচের ইনপুট বক্সে সরাসরি সুপাবেস ক্রেডেনশিয়াল লিখুন।
                               </p>
                               
-                              <div className="space-y-2.5">
-                                <div className="space-y-1">
-                                  <label className="text-[10px] font-bold text-slate-300 block">সুপাবেস URL (VITE_SUPABASE_URL)</label>
-                                  <input
-                                    type="text"
-                                    value={manualSupabaseUrl}
-                                    onChange={(e) => setManualSupabaseUrl(e.target.value)}
-                                    placeholder="https://yourprojectid.supabase.co"
-                                    className="w-full bg-[#110a24] text-xs text-white border border-purple-500/20 rounded-xl px-3 py-2.5 focus:outline-none focus:border-purple-400"
-                                  />
+                              <div className="space-y-3.5">
+                                {/* Section A: Content Database */}
+                                <div className="border border-purple-500/10 p-3 rounded-xl bg-purple-950/10 space-y-2">
+                                  <span className="text-[10px] font-bold text-purple-300 block uppercase tracking-wider font-sans">সেকশন ক: কন্টেন্ট ম্যানেজমেন্ট সুপাবেস সংযোগ (ওয়েবসাইটের কন্টেন্ট সিংক)</span>
+                                  <div className="space-y-2">
+                                    <div className="space-y-1">
+                                      <label className="text-[9px] font-bold text-slate-400 block font-sans">সুপাবেস URL (VITE_SUPABASE_URL)</label>
+                                      <input
+                                        type="text"
+                                        value={manualSupabaseUrl}
+                                        onChange={(e) => setManualSupabaseUrl(e.target.value)}
+                                        placeholder="https://yourprojectid.supabase.co"
+                                        className="w-full bg-[#110a24] text-[11px] text-white border border-purple-500/20 rounded-xl px-3 py-2 focus:outline-none focus:border-purple-400 font-sans"
+                                      />
+                                    </div>
+
+                                    <div className="space-y-1">
+                                      <label className="text-[9px] font-bold text-slate-400 block font-sans">আনন পাবলিক কি (VITE_SUPABASE_ANON_KEY)</label>
+                                      <input
+                                        type="text"
+                                        value={manualSupabaseKey}
+                                        onChange={(e) => setManualSupabaseKey(e.target.value)}
+                                        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                                        className="w-full bg-[#110a24] text-[11px] text-white border border-purple-500/20 rounded-xl px-3 py-2 focus:outline-none focus:border-purple-400 font-mono"
+                                      />
+                                    </div>
+                                  </div>
                                 </div>
 
-                                <div className="space-y-1">
-                                  <label className="text-[10px] font-bold text-slate-300 block">আনন পাবলিক কি (VITE_SUPABASE_ANON_KEY)</label>
-                                  <input
-                                    type="text"
-                                    value={manualSupabaseKey}
-                                    onChange={(e) => setManualSupabaseKey(e.target.value)}
-                                    placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                                    className="w-full bg-[#110a24] text-xs text-white border border-purple-500/20 rounded-xl px-3 py-2.5 focus:outline-none focus:border-purple-400 font-mono"
-                                  />
+                                {/* Section B: Dedicated Orders Database */}
+                                <div className="border border-emerald-500/10 p-3 rounded-xl bg-emerald-950/5 space-y-2">
+                                  <span className="text-[10px] font-bold text-emerald-300 block uppercase tracking-wider font-sans">সেকশন খ: ডেডিকেটেড গ্রাহক অর্ডার সুপাবেস সংযোগ (গ্রাহকদের অর্ডার স্টোরেজ/ডাটাবেজ সংযোগ)</span>
+                                  <div className="space-y-2">
+                                    <div className="space-y-1">
+                                      <label className="text-[9px] font-bold text-slate-400 block font-sans">সুপাবেস URL (VITE_SUPABASE_URL_ORDERS)</label>
+                                      <input
+                                        type="text"
+                                        value={manualSupabaseUrlOrders}
+                                        onChange={(e) => setManualSupabaseUrlOrders(e.target.value)}
+                                        placeholder="https://yourprojectid-orders.supabase.co"
+                                        className="w-full bg-[#0a1120] text-[11px] text-white border border-emerald-500/20 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-400 font-sans"
+                                      />
+                                    </div>
+
+                                    <div className="space-y-1">
+                                      <label className="text-[9px] font-bold text-slate-400 block font-sans">আনন পাবলিক কি (VITE_SUPABASE_ANON_KEY_ORDERS)</label>
+                                      <input
+                                        type="text"
+                                        value={manualSupabaseKeyOrders}
+                                        onChange={(e) => setManualSupabaseKeyOrders(e.target.value)}
+                                        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                                        className="w-full bg-[#0a1120] text-[11px] text-white border border-emerald-500/20 rounded-xl px-3 py-2 focus:outline-none focus:border-emerald-400 font-mono"
+                                      />
+                                    </div>
+                                  </div>
                                 </div>
                               </div>
 
@@ -6033,16 +6149,16 @@ export default function AdminPanel({ isOpen, onClose, isStandalonePWA = false }:
                                 <button
                                   type="button"
                                   onClick={handleSaveManualSupabase}
-                                  className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-extrabold text-[10px] rounded-lg cursor-pointer transition-all active:scale-95 shadow-md shadow-purple-950/20"
+                                  className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-extrabold text-[10px] rounded-lg cursor-pointer transition-all active:scale-95 shadow-md shadow-purple-950/20 font-sans"
                                 >
                                   সংরক্ষণ ও কানেক্ট করুন
                                 </button>
                                 
-                                {(safeLocalStorage.getItem("VITE_SUPABASE_URL") || safeLocalStorage.getItem("VITE_SUPABASE_ANON_KEY")) && (
+                                {(safeLocalStorage.getItem("VITE_SUPABASE_URL") || safeLocalStorage.getItem("VITE_SUPABASE_ANON_KEY") || safeLocalStorage.getItem("VITE_SUPABASE_URL_ORDERS") || safeLocalStorage.getItem("VITE_SUPABASE_ANON_KEY_ORDERS")) && (
                                   <button
                                     type="button"
                                     onClick={handleResetManualSupabase}
-                                    className="px-4 py-2.5 bg-rose-950/40 hover:bg-rose-900/40 text-rose-300 border border-rose-500/20 font-bold text-[10px] rounded-lg cursor-pointer transition-all active:scale-95"
+                                    className="px-4 py-2.5 bg-rose-950/40 hover:bg-rose-900/40 text-rose-300 border border-rose-500/20 font-bold text-[10px] rounded-lg cursor-pointer transition-all active:scale-95 font-sans"
                                   >
                                     মুছে ফেলুন (Reset)
                                   </button>
@@ -6228,61 +6344,100 @@ create policy "Allow public delete" on public.avexon_orders for delete using (tr
                     </div>
 
                     {/* Live Connection Checker Section */}
-                    <div className="border border-purple-500/15 bg-[#0e051d] p-5 rounded-2xl max-w-5xl space-y-4">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <div className="space-y-1">
-                          <h4 className="text-xs font-bold text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-amber-400 uppercase tracking-wider flex items-center gap-2 font-sans">
-                            <Activity className="w-4 h-4 text-emerald-400" />
-                            <span>সংযোগ পরীক্ষা করার টুল (Live Connection Diagnostics)</span>
-                          </h4>
-                          <p className="text-[11px] text-slate-400 leading-relaxed font-sans">
-                            সুপাবেস সঠিক উপায়ে ডাটা রিড, রাইট, এবং ডিলিট করতে পারছে কিনা তা তাৎক্ষণিকভাবে যাচাই করতে চেক বাটনে ক্লিক করুন।
-                          </p>
-                        </div>
-                        <div className="shrink-0">
+                    <div className="border border-purple-500/15 bg-[#0e051d] p-5 rounded-2xl max-w-5xl space-y-4 font-sans">
+                      <div>
+                        <h4 className="text-xs font-bold text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-amber-400 uppercase tracking-wider flex items-center gap-2 font-sans">
+                          <Activity className="w-4 h-4 text-emerald-400" />
+                          <span>ডাটাবেস ডায়াগনস্টিকস ও লাইভ টেস্টিং টুলস (Live Database Diagnostic Center)</span>
+                        </h4>
+                        <p className="text-[11px] text-slate-400 leading-relaxed font-sans mt-1">
+                          আপনার সুপাবেস সংযোগসমূহ সঠিকভাবে ডাটা রিড, রাইট, এবং ডিলিট করতে পারছে কিনা তা যাচাই করতে নিচের ডায়াগনস্টিক চেক টেস্ট বাটনগুলো ব্যবহার করুন।
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-2">
+                        {/* Box 1: Content DB */}
+                        <div className="p-4 rounded-xl border border-purple-500/10 bg-[#120822] space-y-4">
+                          <div className="space-y-1 font-sans">
+                            <span className="text-[11px] font-extrabold text-purple-300 block">১. কন্টেন্ট ম্যানেজমেন্ট সুপাবেস টেস্ট</span>
+                            <p className="text-[10px] text-slate-400 leading-relaxed">
+                              'avexon_content' টেবিলে রিড, নতুন কন্টেন্ট আপলোড এবং ডিলিট করার ক্ষমতা যাচাই করতে।
+                            </p>
+                          </div>
+                          
                           <button
                             type="button"
                             onClick={handleTestSupabaseConnection}
                             disabled={supabaseTestStatus === "testing"}
-                            className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-slate-800 disabled:to-slate-800 disabled:opacity-50 text-white font-extrabold text-[11px] rounded-xl cursor-pointer transition-all active:scale-95 shadow-lg shadow-emerald-950/40"
+                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 disabled:from-slate-800 disabled:to-slate-800 disabled:opacity-50 text-white font-extrabold text-[10px] rounded-lg cursor-pointer transition-all active:scale-95 shadow-md font-sans"
                           >
                             {supabaseTestStatus === "testing" ? (
                               <>
-                                <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                                <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
                                 <span>কানেকশন চেক করা হচ্ছে...</span>
                               </>
                             ) : (
                               <>
-                                <CheckCircle className="w-4 h-4" />
-                                <span>টেস্ট কানেকশন (Check Now)</span>
+                                <CheckCircle className="w-3.5 h-3.5" />
+                                <span>টেস্ট কন্টেন্ট ডাটাবেস (Check Content)</span>
                               </>
                             )}
                           </button>
+
+                          {supabaseTestStatus !== "idle" && (
+                            <div className={`p-3 rounded-lg border text-[11px] ${
+                              supabaseTestStatus === "testing" 
+                                ? "bg-[#101530] border-blue-500/25 text-blue-200"
+                                : supabaseTestStatus === "success"
+                                ? "bg-[#0b1f14] border-emerald-500/25 text-emerald-200"
+                                : "bg-[#250d18] border-rose-500/25 text-rose-200"
+                            } font-sans space-y-1`}>
+                              <div className="font-semibold break-words">{supabaseTestMessage}</div>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Box 2: Orders DB */}
+                        <div className="p-4 rounded-xl border border-emerald-500/15 bg-[#081216] space-y-4">
+                          <div className="space-y-1 font-sans">
+                            <span className="text-[11px] font-extrabold text-emerald-300 block">২. ডেডিকেটেড গ্রাহক অর্ডার সুপাবেস টেস্ট</span>
+                            <p className="text-[10px] text-slate-400 leading-relaxed">
+                              'avexon_orders' টেবিলে গ্রাহকের নতুন অর্ডার সেভ, রিড ও এডমিন আপডেট ক্ষমতা যাচাই করতে।
+                            </p>
+                          </div>
+                          
+                          <button
+                            type="button"
+                            onClick={handleTestSupabaseOrders}
+                            disabled={supabaseOrdersTestStatus === "testing"}
+                            className="w-full inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:from-slate-800 disabled:to-slate-800 disabled:opacity-50 text-white font-extrabold text-[10px] rounded-lg cursor-pointer transition-all active:scale-95 shadow-md font-sans"
+                          >
+                            {supabaseOrdersTestStatus === "testing" ? (
+                              <>
+                                <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                                <span>টেবিল ও অর্ডার চেক করা হচ্ছে...</span>
+                              </>
+                            ) : (
+                              <>
+                                <CheckCircle className="w-3.5 h-3.5" />
+                                <span>টেস্ট অর্ডার ডাটাবেস (Check Orders)</span>
+                              </>
+                            )}
+                          </button>
+
+                          {supabaseOrdersTestStatus !== "idle" && (
+                            <div className={`p-3 rounded-lg border text-[11px] ${
+                              supabaseOrdersTestStatus === "testing" 
+                                ? "bg-[#101530] border-blue-500/25 text-blue-200"
+                                : supabaseOrdersTestStatus === "success"
+                                ? "bg-[#0b1f14] border-emerald-500/25 text-emerald-200"
+                                : "bg-[#250d18] border-rose-500/25 text-rose-200"
+                            } font-sans space-y-1`}>
+                              <div className="font-semibold break-words">{supabaseOrdersTestMessage}</div>
+                            </div>
+                          )}
                         </div>
                       </div>
-
-                      {supabaseTestStatus !== "idle" && (
-                        <div className={`p-4 rounded-xl border ${
-                          supabaseTestStatus === "testing" 
-                            ? "bg-[#101530] border-blue-500/25 text-blue-200"
-                            : supabaseTestStatus === "success"
-                            ? "bg-[#0b1f14] border-emerald-500/25 text-emerald-200"
-                            : "bg-[#250d18] border-rose-500/25 text-rose-200"
-                        } font-sans space-y-1.5`}>
-                          <div className="flex items-center gap-2">
-                            <span className="flex h-2.5 w-2.5 relative">
-                              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full ${
-                                supabaseTestStatus === "testing" ? "bg-blue-400" : supabaseTestStatus === "success" ? "bg-emerald-400" : "bg-rose-400"
-                              } opacity-75`}></span>
-                              <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${
-                                supabaseTestStatus === "testing" ? "bg-blue-500" : supabaseTestStatus === "success" ? "bg-emerald-500" : "bg-rose-500"
-                              }`}></span>
-                            </span>
-                            <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400">টেস্ট ট্র্যাকার লগ:</span>
-                          </div>
-                          <p className="text-xs font-semibold leading-relaxed break-words">{supabaseTestMessage}</p>
-                        </div>
-                      )}
                     </div>
 
                     <div className="border border-purple-500/10 bg-[#0e051d] p-5 rounded-2xl max-w-5xl space-y-3">

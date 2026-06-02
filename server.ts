@@ -422,6 +422,34 @@ function getSupabaseClient() {
   return null;
 }
 
+// Intelligently instantiate a server-side Supabase client for a separate orders sync if configured
+function getSupabaseOrdersClient() {
+  let supabaseUrl = process.env.VITE_SUPABASE_URL_ORDERS || "";
+  let supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY_ORDERS || "";
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    if (fs.existsSync(SUPABASE_CONFIG_FILE)) {
+      try {
+        const config = JSON.parse(fs.readFileSync(SUPABASE_CONFIG_FILE, "utf-8"));
+        supabaseUrl = supabaseUrl || config.VITE_SUPABASE_URL_ORDERS || "";
+        supabaseAnonKey = supabaseAnonKey || config.VITE_SUPABASE_ANON_KEY_ORDERS || "";
+      } catch (e) {
+        console.warn("Failed to parse src/supabase_config.json for orders server-side:", e);
+      }
+    }
+  }
+
+  supabaseUrl = supabaseUrl.trim();
+  supabaseAnonKey = supabaseAnonKey.trim();
+
+  if (supabaseUrl && supabaseAnonKey && supabaseUrl !== "YOUR_SUPABASE_URL_HERE" && supabaseUrl.length > 0) {
+    return createClient(supabaseUrl, supabaseAnonKey, {
+      auth: { persistSession: false }
+    });
+  }
+  return getSupabaseClient(); // default fallback
+}
+
 // API to get content config from sever JSON file
 app.get("/api/content", async (req, res) => {
   try {
@@ -503,11 +531,28 @@ app.post("/api/content", async (req, res) => {
 // API to save manual Supabase credentials to src/supabase_config.json
 app.post("/api/supabase-config", (req, res) => {
   try {
-    const { url, anonKey } = req.body;
-    const config = {
-      VITE_SUPABASE_URL: url || "",
-      VITE_SUPABASE_ANON_KEY: anonKey || ""
+    const { url, anonKey, urlOrders, anonKeyOrders } = req.body;
+    
+    // Read existing config first to prevent accidental complete wipes of either if only one is updated
+    let existingConfig = {
+      VITE_SUPABASE_URL: "",
+      VITE_SUPABASE_ANON_KEY: "",
+      VITE_SUPABASE_URL_ORDERS: "",
+      VITE_SUPABASE_ANON_KEY_ORDERS: ""
     };
+    if (fs.existsSync(SUPABASE_CONFIG_FILE)) {
+      try {
+        existingConfig = JSON.parse(fs.readFileSync(SUPABASE_CONFIG_FILE, "utf-8"));
+      } catch (_) {}
+    }
+
+    const config = {
+      VITE_SUPABASE_URL: url !== undefined ? url : existingConfig.VITE_SUPABASE_URL,
+      VITE_SUPABASE_ANON_KEY: anonKey !== undefined ? anonKey : existingConfig.VITE_SUPABASE_ANON_KEY,
+      VITE_SUPABASE_URL_ORDERS: urlOrders !== undefined ? urlOrders : existingConfig.VITE_SUPABASE_URL_ORDERS,
+      VITE_SUPABASE_ANON_KEY_ORDERS: anonKeyOrders !== undefined ? anonKeyOrders : existingConfig.VITE_SUPABASE_ANON_KEY_ORDERS
+    };
+    
     fs.writeFileSync(SUPABASE_CONFIG_FILE, JSON.stringify(config, null, 2), "utf-8");
     res.json({ success: true, message: "Supabase config written to workspace successfully!" });
   } catch (err: any) {
@@ -519,7 +564,7 @@ app.post("/api/supabase-config", (req, res) => {
 // API to get all customer orders
 app.get("/api/orders", async (req, res) => {
   try {
-    const dbClient = getSupabaseClient();
+    const dbClient = getSupabaseOrdersClient();
     if (dbClient) {
       try {
         // Set a strict 1500ms timeout for Supabase query to prevent blocking if cloud is down or slow
@@ -630,7 +675,7 @@ app.post("/api/orders", async (req, res) => {
     res.json({ success: true, data: ordersList });
 
     // Perform Supabase cloud storage syncing asynchronously in background
-    const dbClient = getSupabaseClient();
+    const dbClient = getSupabaseOrdersClient();
     if (dbClient) {
       (async () => {
         try {
@@ -682,7 +727,7 @@ app.delete("/api/orders/:id", async (req, res) => {
     res.json({ success: true, data: ordersList });
 
     // Perform background cloud deletion
-    const dbClient = getSupabaseClient();
+    const dbClient = getSupabaseOrdersClient();
     if (dbClient) {
       (async () => {
         try {

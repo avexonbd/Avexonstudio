@@ -16,7 +16,7 @@ import CheckoutModal from "./components/CheckoutModal";
 import AdminPanel from "./components/AdminPanel";
 import { useContent } from "./context/ContentContext";
 import { safeLocalStorage, safeSessionStorage } from "./utils/safeStorage";
-import { isSupabaseConfigured, supabase } from "./lib/supabase";
+import { isSupabaseConfigured, supabase, isSupabaseOrdersConfigured, supabaseOrders } from "./lib/supabase";
 
 export default function App() {
   const { isLoading, logoUrl, headerBranding } = useContent();
@@ -191,9 +191,9 @@ export default function App() {
 
     // 2. Real-time instant websocket notification if cloud database is active
     let subscription_channel: any = null;
-    if (isSupabaseConfigured && supabase) {
+    if (isSupabaseOrdersConfigured && supabaseOrders) {
       try {
-        subscription_channel = supabase
+        subscription_channel = supabaseOrders
           .channel("avexon_orders_realtime_global_app")
           .on(
             "postgres_changes",

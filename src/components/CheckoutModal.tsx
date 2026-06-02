@@ -28,7 +28,7 @@ import {
   Globe
 } from "lucide-react";
 import { useContent } from "../context/ContentContext";
-import { supabase, isSupabaseConfigured } from "../lib/supabase";
+import { supabase, isSupabaseConfigured, supabaseOrders, isSupabaseOrdersConfigured } from "../lib/supabase";
 import { safeLocalStorage } from "../utils/safeStorage";
 
 // Custom WhatsApp Icon Component (SVG based, highly accurate)
@@ -324,8 +324,8 @@ export default function CheckoutModal({ isOpen, onClose, preselectedWebsiteTitle
   useEffect(() => {
     let ordersSubscription: any = null;
     
-    if (isSupabaseConfigured && supabase && isOpen) {
-      ordersSubscription = supabase
+    if (isSupabaseOrdersConfigured && supabaseOrders && isOpen) {
+      ordersSubscription = supabaseOrders
         .channel("avexon_orders_realtime_modal")
         .on(
           "postgres_changes",
@@ -482,10 +482,10 @@ export default function CheckoutModal({ isOpen, onClose, preselectedWebsiteTitle
         }).catch(err => console.warn("Failed server order sync: ", err));
 
         // Also client-side upsert directly to Supabase flat table for instant cross-browser broadcast
-        if (isSupabaseConfigured && supabase) {
+        if (isSupabaseOrdersConfigured && supabaseOrders) {
           (async () => {
             try {
-              await supabase.from("avexon_orders").upsert({ id: newOrder.id, value: newOrder });
+              await supabaseOrders.from("avexon_orders").upsert({ id: newOrder.id, value: newOrder });
             } catch (err) {
               console.warn("Direct Supabase flat order upload failed:", err);
             }
@@ -585,10 +585,10 @@ export default function CheckoutModal({ isOpen, onClose, preselectedWebsiteTitle
       }).catch(err => console.warn("Failed server order sync: ", err));
 
       // Also client-side upsert directly to Supabase flat table for instant cross-browser broadcast
-      if (isSupabaseConfigured && supabase) {
+      if (isSupabaseOrdersConfigured && supabaseOrders) {
         (async () => {
           try {
-            await supabase.from("avexon_orders").upsert({ id: newOrder.id, value: newOrder });
+            await supabaseOrders.from("avexon_orders").upsert({ id: newOrder.id, value: newOrder });
           } catch (err) {
             console.warn("Direct Supabase flat order upload failed:", err);
           }
