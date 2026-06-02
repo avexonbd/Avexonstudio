@@ -590,6 +590,9 @@ app.post("/api/supabase-config", (req, res) => {
 
 // API to get all customer orders
 app.get("/api/orders", async (req, res) => {
+  let ordersList: any[] = [];
+  let fetchedFromSupabase = false;
+
   try {
     const dbClient = getSupabaseOrdersClient();
     if (dbClient) {
@@ -603,19 +606,13 @@ app.get("/api/orders", async (req, res) => {
           )
         ]);
 
-        const { data: orderRows, error: orderTableError } = result;
+        const { data: orderRows, error: orderTableError } = result as any;
 
-        if (!orderTableError && orderRows) {
-          const ordersList = orderRows.map((row: any) => row.value || row);
-          
-          // Save backup copy locally
-          try {
-            fs.writeFileSync(ORDERS_DB_FILE, JSON.stringify(ordersList, null, 2), "utf-8");
-          } catch (fsErr) {
-            console.warn("Could not save backup copy of orders data to filesystem:", fsErr);
-          }
-          return res.json({ success: true, data: ordersList });
+        if (!orderTableError && Array.isArray(orderRows)) {
+          ordersList = orderRows.map((row: any) => row.value || row);
+          fetchedFromSupabase = true;
         } else {
+          console.warn("avexon_orders table select query failed. Attempting legacy avexon_content table sync...");
           // Fallback to legacy avexon_content "orders" key row with strict 1500ms timeout
           const legacyPromise = dbClient.from("avexon_content").select("value").eq("key", "orders").single();
           const legacyResult = await Promise.race([
@@ -625,29 +622,24 @@ app.get("/api/orders", async (req, res) => {
             )
           ]);
 
-          const { data: legacyData, error: legacyError } = legacyResult;
+          const { data: legacyData, error: legacyError } = legacyResult as any;
 
           if (!legacyError && legacyData && Array.isArray(legacyData.value)) {
-            const ordersList = legacyData.value;
+            ordersList = legacyData.value;
+            fetchedFromSupabase = true;
             
             // Seed the flat orders table in background silently
             for (const order of ordersList) {
-              (async () => {
-                try {
-                  await dbClient.from("avexon_orders").upsert({ id: order.id, value: order });
-                } catch (e) {
-                  // backup fail silent
-                }
-              })();
+              if (order && order.id) {
+                (async () => {
+                  try {
+                    await dbClient.from("avexon_orders").upsert({ id: order.id, value: order });
+                  } catch (e) {
+                    console.warn(`Background seeding of order ${order.id} failed:`, e);
+                  }
+                })();
+              }
             }
-
-            // Save backup to disk
-            try {
-              fs.writeFileSync(ORDERS_DB_FILE, JSON.stringify(ordersList, null, 2), "utf-8");
-            } catch (fsErr) {
-              console.warn("Could not save backup copy of orders data to filesystem:", fsErr);
-            }
-            return res.json({ success: true, data: ordersList });
           }
         }
       } catch (err) {
@@ -655,21 +647,40 @@ app.get("/api/orders", async (req, res) => {
       }
     }
 
-    // Default fast local filesystem fallback if Supabase is offline or not configured
+    // Save backup copy locally if successfully fetched and merged
+    if (fetchedFromSupabase && Array.isArray(ordersList)) {
+      try {
+        fs.writeFileSync(ORDERS_DB_FILE, JSON.stringify(ordersList, null, 2), "utf-8");
+      } catch (fsErr) {
+        console.warn("Could not save backup copy of orders data to filesystem:", fsErr);
+      }
+      return res.json({ success: true, data: ordersList });
+    }
+
+    // Default fast local filesystem fallback if Supabase is offline or not configured or failed
     if (fs.existsSync(ORDERS_DB_FILE)) {
       const fileData = fs.readFileSync(ORDERS_DB_FILE, "utf-8");
       try {
-        res.json({ success: true, data: JSON.parse(fileData) });
+        const parsed = JSON.parse(fileData);
+        return res.json({ success: true, data: Array.isArray(parsed) ? parsed : [] });
       } catch (parseErr) {
         console.error("Local file orders_db.json is corrupted:", parseErr);
-        res.json({ success: true, data: [] });
+        return res.json({ success: true, data: [] });
       }
     } else {
-      res.json({ success: true, data: [] });
+      return res.json({ success: true, data: [] });
     }
   } catch (err: any) {
     console.error("Error reading orders database:", err);
-    res.status(500).json({ success: false, error: err.message });
+    if (!res.headersSent) {
+      if (fs.existsSync(ORDERS_DB_FILE)) {
+        try {
+          const fileData = fs.readFileSync(ORDERS_DB_FILE, "utf-8");
+          return res.json({ success: true, data: JSON.parse(fileData) });
+        } catch (_) {}
+      }
+      res.status(500).json({ success: false, error: err.message, data: [] });
+    }
   }
 });
 
@@ -677,18 +688,23 @@ app.get("/api/orders", async (req, res) => {
 app.post("/api/orders", async (req, res) => {
   try {
     const incomingOrder = req.body;
+    if (!incomingOrder || !incomingOrder.id) {
+      return res.status(400).json({ success: false, error: "সঠিক অর্ডার ডাটা পাওয়া যায়নি!" });
+    }
+
     let ordersList = [];
 
     if (fs.existsSync(ORDERS_DB_FILE)) {
       try {
         const fileData = fs.readFileSync(ORDERS_DB_FILE, "utf-8");
         ordersList = JSON.parse(fileData);
+        if (!Array.isArray(ordersList)) ordersList = [];
       } catch (err) {
         ordersList = [];
       }
     }
 
-    const existingIndex = ordersList.findIndex((o: any) => o.id === incomingOrder.id);
+    const existingIndex = ordersList.findIndex((o: any) => o && o.id === incomingOrder.id);
     if (existingIndex !== -1) {
       ordersList[existingIndex] = { ...ordersList[existingIndex], ...incomingOrder };
     } else {
